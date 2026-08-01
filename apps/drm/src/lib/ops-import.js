@@ -5,6 +5,42 @@ import { IMPORT_TYPES } from './import-types.js';
 const clean = (v) => (v === undefined || v === null || String(v).trim() === '' ? null : String(v).trim());
 const digits = (v) => (v ? String(v).replace(/\D/g, '') : '');
 
+// Country codes we're likely to see. Longest match wins so +91 isn't read as +9.
+const CCS = ['1', '7', '20', '27', '30', '31', '33', '34', '39', '44', '49', '52', '55', '60',
+  '61', '62', '63', '64', '65', '66', '81', '82', '84', '86', '90', '91', '92', '94', '95',
+  '971', '974', '977', '966', '968', '973', '880', '353', '358', '971'];
+
+/**
+ * Zoho stores the phone as one string like "+919840012345". Split it so the
+ * country code lands in its own column — the whole international story depends
+ * on never assuming +91.
+ */
+export function splitPhone(raw) {
+  const s = String(raw || '').trim();
+  if (!s) return { cc: null, number: null };
+  if (s.startsWith('+') || s.startsWith('00')) {
+    const d = digits(s.startsWith('00') ? s.slice(2) : s);
+    const hit = CCS.filter((c) => d.startsWith(c)).sort((a, b) => b.length - a.length)[0];
+    if (hit && d.length > hit.length + 5) return { cc: `+${hit}`, number: d.slice(hit.length) };
+    return { cc: '+91', number: d };
+  }
+  const d = digits(s);
+  // A bare 12-digit number beginning 91 is an Indian number with the code stuck on.
+  if (d.length === 12 && d.startsWith('91')) return { cc: '+91', number: d.slice(2) };
+  return { cc: '+91', number: d || null };
+}
+
+/** Normalise whatever the source calls a payment method onto our allowed set. */
+function paymentMode(def, raw) {
+  const v = clean(raw);
+  if (!v) return null;
+  const key = v.toLowerCase().replace(/[^a-z ]/g, '').trim();
+  const map = def.fixedPaymentModes || {};
+  if (map[key]) return map[key];
+  const allowed = ['cash', 'upi', 'card', 'netbanking', 'cheque', 'dd', 'bank_transfer', 'other'];
+  return allowed.includes(key.replace(/ /g, '_')) ? key.replace(/ /g, '_') : 'other';
+}
+
 /** Normalise a name so "Ramesh  Kumar" and "ramesh kumar" compare equal. */
 const normName = (v) => String(v || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
 
@@ -40,6 +76,13 @@ function coerce(def, field, raw) {
  */
 async function resolvePerson(row) {
   const rowName = row.full_name;
+
+  // Sources that give one combined phone string (Zoho) rather than cc + number.
+  if (row.phone && !row.mobile_number) {
+    const { cc, number } = splitPhone(row.phone);
+    row.mobile_cc = row.mobile_cc || cc;
+    row.mobile_number = number;
+  }
 
   if (clean(row.person_no)) {
     const r = await q(
@@ -99,12 +142,32 @@ export const IMPORT_OPS = {
       if (!Array.isArray(rows) || !rows.length) throw new Error('No rows to preview');
       if (rows.length > 20000) throw new Error('Split files larger than 20,000 rows');
 
+      // Which source ids are already in the database? One query, not one per row.
+      const seen = new Set();
+      if (def.externalSource) {
+        const ids = rows.map((r) => clean(r.external_id)).filter(Boolean);
+        if (ids.length) {
+          const ex = await q(
+            'SELECT external_id FROM donation WHERE external_source = $1 AND external_id = ANY($2)',
+            [def.externalSource, ids]);
+          ex.rows.forEach((r) => seen.add(String(r.external_id)));
+        }
+      }
+
       const results = [];
-      let matched = 0; let review = 0; let errors = 0;
+      let matched = 0; let review = 0; let errors = 0; let duplicates = 0; let willCreate = 0;
 
       for (let i = 0; i < rows.length; i++) {
         const row = rows[i];
         const out = { i, row };
+
+        if (def.externalSource && clean(row.external_id) && seen.has(String(row.external_id).trim())) {
+          out.status = 'duplicate';
+          out.message = 'Already imported — same source record id';
+          duplicates++;
+          results.push(out);
+          continue;
+        }
 
         // Field-level validation first — a bad date is an error, not a review item.
         try {
@@ -130,13 +193,27 @@ export const IMPORT_OPS = {
           out.via = r.via;
           out.reason = r.reason;
           out.candidates = r.candidates || [];
-          if (r.status === 'matched') { out.personId = r.person.id; out.personLabel = `#${r.person.person_no} ${r.person.full_name}`; matched++; }
-          else review++;
+
+          if (r.status === 'matched') {
+            out.personId = r.person.id;
+            out.personLabel = `#${r.person.person_no} ${r.person.full_name}`;
+            matched++;
+          } else if (def.autoCreatePerson && ['no_match', 'no_identifier'].includes(r.reason)
+                     && clean(row.full_name)) {
+            // No candidate at all, and the row carries the donor's own details:
+            // a new donor, not an ambiguity. Ambiguous cases still fall through
+            // to review below.
+            out.status = 'will_create';
+            out.action = 'create';
+            willCreate++;
+          } else {
+            review++;
+          }
         }
         results.push(out);
       }
 
-      return { type, total: rows.length, matched, review, errors, results };
+      return { type, total: rows.length, matched, review, errors, duplicates, willCreate, results };
     },
   },
 
@@ -161,7 +238,7 @@ export const IMPORT_OPS = {
         const src = `import:${batchId}`;
         const tag = def.forceTag || tagSlug || null;
 
-        let inserted = 0; let skipped = 0; let created = 0;
+        let inserted = 0; let skipped = 0; let created = 0; let duplicates = 0;
         const newPersonIds = [];
 
         // -------------------------------------------------- master imports
@@ -192,46 +269,90 @@ export const IMPORT_OPS = {
 
         // -------------------------------------------------- module imports
         } else {
+          // Source ids already present — never double-count money.
+          const seen = new Set();
+          if (def.externalSource) {
+            const ids = rows.map((r) => clean(r.external_id)).filter(Boolean);
+            if (ids.length) {
+              const ex = await c.query(
+                'SELECT external_id FROM donation WHERE external_source = $1 AND external_id = ANY($2)',
+                [def.externalSource, ids]);
+              ex.rows.forEach((r) => seen.add(String(r.external_id)));
+            }
+          }
+
           for (let i = 0; i < rows.length; i++) {
             const row = rows[i];
             const res = resolutions[i] || resolutions[String(i)];
-            let personId = res?.personId || null;
 
             if (res?.action === 'skip') { skipped++; continue; }
 
+            const extId = clean(row.external_id);
+            if (def.externalSource && extId && seen.has(extId)) { duplicates++; continue; }
+
+            let personId = res?.personId || null;
+
             if (!personId) {
-              if (res?.action === 'create') {
+              const r = await resolvePerson(row);
+              if (r.status === 'matched') {
+                personId = r.person.id;
+              } else if (res?.action === 'create'
+                         || (def.autoCreatePerson && ['no_match', 'no_identifier'].includes(r.reason)
+                             && clean(row.full_name))) {
+                const { cc, number } = row.phone
+                  ? splitPhone(row.phone)
+                  : { cc: clean(row.mobile_cc) || '+91', number: digits(row.mobile_number) || null };
                 const p = await c.query(
-                  `INSERT INTO person (full_name, mobile_cc, mobile_number, email, source, created_by)
-                   VALUES ($1,$2,$3,$4,$5,$6) RETURNING id`,
-                  [clean(row.full_name) || 'Unnamed', clean(row.mobile_cc) || '+91',
-                    digits(row.mobile_number) || null, clean(row.email), src, user.id]);
+                  `INSERT INTO person (full_name, mobile_cc, mobile_number, email, address_line,
+                                       source, needs_review, review_reason, created_by)
+                   VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING id`,
+                  [clean(row.full_name) || 'Unnamed', cc, number, clean(row.email),
+                    clean(row.address_line), src,
+                    !!def.flagAutoCreated,
+                    def.flagAutoCreated ? `Created automatically by ${type} import` : null,
+                    user.id]);
                 personId = p.rows[0].id;
                 newPersonIds.push(personId);
                 created++;
               } else {
-                // Re-resolve: rows the preview matched cleanly carry no resolution.
-                const r = await resolvePerson(row);
-                if (r.status !== 'matched') { skipped++; continue; }
-                personId = r.person.id;
+                skipped++;
+                continue;
               }
             }
 
             const data = {};
             for (const f of def.fields) {
+              if (f === 'payment_mode') {
+                const m = paymentMode(def, row[f]);
+                if (m) data[f] = m;
+                continue;
+              }
               const v = coerce(def, f, row[f]);
               if (v !== null) data[f] = v;
             }
 
-            // Resolve text lookups (e.g. seva category name -> id)
+            // Text lookups, e.g. seva category name -> id. autoCreate means a
+            // new category in the source never blocks an import.
             for (const [field, lk] of Object.entries(def.lookups || {})) {
-              if (data[field] != null) {
-                const l = await c.query(
-                  `SELECT id FROM ${lk.table} WHERE slug = $1 OR lower(name) = lower($1) LIMIT 1`,
-                  [String(data[field])]);
-                delete data[field];
-                if (l.rows.length) data[lk.column] = l.rows[0].id;
+              const name = data[field];
+              delete data[field];
+              if (name == null) continue;
+              const slug = String(name).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+              let l = await c.query(
+                `SELECT id FROM ${lk.table} WHERE slug = $1 OR lower(name) = lower($2) LIMIT 1`,
+                [slug, String(name)]);
+              if (!l.rows.length && lk.autoCreate) {
+                l = await c.query(
+                  `INSERT INTO ${lk.table} (slug, name) VALUES ($1,$2)
+                   ON CONFLICT (slug) DO UPDATE SET name = EXCLUDED.name RETURNING id`,
+                  [slug, String(name)]);
               }
+              if (l.rows.length) data[lk.column] = l.rows[0].id;
+            }
+
+            if (def.externalSource) {
+              data.external_source = def.externalSource;
+              if (extId) data.external_id = extId;
             }
 
             const keys = Object.keys(data);
@@ -241,6 +362,7 @@ export const IMPORT_OPS = {
                VALUES ($1, ${keys.map((_, n) => `$${n + 2}`).join(',')}, $${keys.length + 2})`,
               [personId, ...vals, user.id]);
             inserted++;
+            if (extId) seen.add(extId);
 
             if (def.table === 'donation') {
               await c.query(
@@ -264,7 +386,7 @@ export const IMPORT_OPS = {
         await c.query('UPDATE import_batch SET inserted_count=$2, completed_at=now() WHERE id=$1',
           [batchId, inserted]);
 
-        return { batchId, inserted, skipped, created, tag };
+        return { batchId, inserted, skipped, created, duplicates, tag };
       });
     },
   },

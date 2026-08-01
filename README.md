@@ -114,7 +114,7 @@ button is not security — the check that matters is on the server.
 | Page | Who | What |
 |---|---|---|
 | `/` | everyone | Devotee grid — categories, search, filters, inline edit, CSV import/export, batches |
-| `/import` | module manager+ | Typed imports: devotees, IYS Boys/Girls, Unnati Club, donations, japa cards |
+| `/import` | module manager+ | Typed imports: devotees, IYS Boys/Girls, Unnati Club, donations, **Zoho donations**, japa cards. Accepts `.xlsx` directly as well as CSV |
 | `/insights` | everyone | Charts across donations, growth, demographics, segments, data quality. Export to xlsx |
 
 ### How imports match a row to a devotee
@@ -128,6 +128,27 @@ name doesn't pick one out, it's held too. Nothing is guessed.
 
 The operator then decides per row: link to a specific devotee, create a new one, or skip.
 Undecided rows are skipped, never assumed. Preview writes nothing; only commit does.
+
+### Zoho donations
+
+`zoho_donations` takes the Zoho export **unmodified** — upload the `.xlsx`, no renaming, no CSV
+conversion. All 20 of its columns are mapped or explicitly ignored.
+
+Three things this import does that the generic one doesn't:
+
+- **Seva date is kept separate from the payment date.** A Zoho row can be paid on 1 August for a
+  seva on 21 August. `donated_on` follows the money, `seva_date` follows the seva. Losing either
+  would break a real workflow — finance reports on one, the kitchen works from the other.
+- **Zoho's record `ID` is stored and unique per source.** Re-importing an overlapping export skips
+  what's already there instead of double-counting donations. This is enforced by a database
+  constraint, not just by the UI.
+- **Unmatched donors are created, not queued.** The export carries the donor's own name, phone,
+  email and address, so a row matching nobody is a new donor rather than an ambiguity. They're
+  created and flagged `needs_review` for auditing. Genuinely ambiguous cases — a name that
+  disagrees, or several devotees sharing a number — still stop for a decision.
+
+Seva categories are auto-created as Zoho introduces them, so a new category never blocks an
+import. `Seva Type` is stored as free text on the donation.
 
 ## Local development
 

@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { IMPORT_TYPES, MATCH_FIELDS } from '@/lib/import-types';
+import { IMPORT_TYPES, MATCH_FIELDS, mapHeader, typeColumns } from '@/lib/import-types';
 
 async function api(op, payload) {
   const r = await fetch('/api/data', {
@@ -54,35 +54,59 @@ export default function ImportClient() {
   const [err, setErr] = useState('');
   const [done, setDone] = useState(null);
 
+  const [sheetRows, setSheetRows] = useState(null); // parsed from .xlsx
+  const [sheetInfo, setSheetInfo] = useState(null);
+
   const def = IMPORT_TYPES[type];
-  const columns = useMemo(
-    () => (def.link === 'person' ? [...MATCH_FIELDS, ...def.fields] : def.fields),
-    [def]);
+  const columns = useMemo(() => typeColumns(type), [type]);
 
   useEffect(() => {
     api('meta').then((m) => setTags(m.tags)).catch(() => {});
   }, []);
 
-  function rowsFromText() {
-    const g = parseCSV(text.trim());
-    if (g.length < 2) throw new Error('Paste a CSV with a header row and at least one data row.');
-    const hdr = g[0].map((h) => h.trim().toLowerCase().replace(/\s+/g, '_'));
-    const known = hdr.map((h) => (columns.includes(h) ? h : null));
+  /** Map raw headers (Zoho's or ours) onto field names, for either source. */
+  function mapRows(rawHeaders, rawRows) {
+    const known = rawHeaders.map((h) => mapHeader(type, h));
     if (!known.some(Boolean)) {
-      throw new Error(`None of these headers are recognised for this import: ${hdr.join(', ')}`);
+      throw new Error(`None of these headers are recognised for this import: ${rawHeaders.join(', ')}`);
     }
-    const rows = g.slice(1).map((r) => {
+    const rows = rawRows.map((r) => {
       const o = {};
-      known.forEach((k, i) => { if (k) o[k] = (r[i] || '').trim(); });
+      known.forEach((k, i) => {
+        if (!k) return;
+        const v = Array.isArray(r) ? r[i] : r[rawHeaders[i]];
+        o[k] = v == null ? '' : String(v).trim();
+      });
       return o;
     });
-    return { rows, ignored: hdr.filter((h, i) => !known[i]) };
+    return { rows, ignored: rawHeaders.filter((h, i) => !known[i]) };
+  }
+
+  function rowsFromInput() {
+    if (sheetRows) return mapRows(sheetInfo.headers, sheetRows);
+    const g = parseCSV(text.trim());
+    if (g.length < 2) throw new Error('Paste a CSV with a header row and at least one data row.');
+    return mapRows(g[0].map((h) => String(h).trim()), g.slice(1));
+  }
+
+  async function readSpreadsheet(file) {
+    setErr(''); setBusy(true); setPreview(null); setText('');
+    try {
+      const fd = new FormData();
+      fd.append('file', file);
+      const r = await fetch('/api/import/parse', { method: 'POST', body: fd });
+      const j = await r.json();
+      if (!r.ok) throw new Error(j.error || 'Could not read the file');
+      setSheetInfo(j.data);
+      setSheetRows(j.data.rows);
+    } catch (e) { setErr(e.message); setSheetRows(null); setSheetInfo(null); }
+    setBusy(false);
   }
 
   async function runPreview() {
     setErr(''); setDone(null); setBusy(true);
     try {
-      const { rows, ignored } = rowsFromText();
+      const { rows, ignored } = rowsFromInput();
       const p = await api('import.preview', { type, rows });
       p.ignored = ignored;
       setPreview(p);
@@ -94,13 +118,15 @@ export default function ImportClient() {
   async function commit() {
     setErr(''); setBusy(true);
     try {
-      const { rows } = rowsFromText();
+      const { rows } = rowsFromInput();
       const r = await api('import.commit', {
         type, rows, resolutions, tagSlug: tagSlug || null, sourceFile: fileName || 'paste',
       });
       setDone(r);
       setPreview(null);
       setText('');
+      setSheetRows(null);
+      setSheetInfo(null);
     } catch (e) { setErr(e.message); }
     setBusy(false);
   }
@@ -123,6 +149,7 @@ export default function ImportClient() {
         <div className="okbox">
           <b>Imported {done.inserted} rows (batch #{done.batchId})</b>
           {done.created ? <> · {done.created} new devotee records created</> : null}
+          {done.duplicates ? <> · {done.duplicates} already present, skipped</> : null}
           {done.skipped ? <> · {done.skipped} skipped</> : null}
         </div>
       )}
@@ -160,19 +187,36 @@ export default function ImportClient() {
         </p>
 
         <input
-          type="file" accept=".csv,text/csv"
+          type="file" accept=".csv,.xlsx,.xlsm,text/csv"
           onChange={(e) => {
             const f = e.target.files[0]; if (!f) return;
             setFileName(f.name);
-            const rd = new FileReader();
-            rd.onload = () => { setText(String(rd.result)); setPreview(null); };
-            rd.readAsText(f);
+            setPreview(null);
+            if (/\.xlsx?$|\.xlsm$/i.test(f.name)) {
+              readSpreadsheet(f);
+            } else {
+              setSheetRows(null); setSheetInfo(null);
+              const rd = new FileReader();
+              rd.onload = () => setText(String(rd.result));
+              rd.readAsText(f);
+            }
           }}
         />
-        <textarea
-          rows={8} value={text} placeholder="or paste CSV here"
-          onChange={(e) => { setText(e.target.value); setPreview(null); }}
-        />
+
+        {sheetInfo && (
+          <div className="okbox">
+            <b>Read {sheetRows.length} rows from “{sheetInfo.sheet}”</b>
+            {sheetInfo.sheets.length > 1 && <> · other sheets in this file: {sheetInfo.sheets.filter((s) => s !== sheetInfo.sheet).join(', ')}</>}
+            {sheetInfo.truncated && <> · <span className="warn">only the first 20,000 rows were read</span></>}
+          </div>
+        )}
+
+        {!sheetRows && (
+          <textarea
+            rows={8} value={text} placeholder="or paste CSV here"
+            onChange={(e) => { setText(e.target.value); setPreview(null); }}
+          />
+        )}
 
         {!def.forceTag && (
           <div className="fg">
@@ -187,7 +231,7 @@ export default function ImportClient() {
           <p className="hint">Everyone imported here is automatically tagged <code>{def.forceTag}</code>.</p>
         )}
 
-        <button className="p" disabled={busy || !text.trim()} onClick={runPreview}>
+        <button className="p" disabled={busy || (!text.trim() && !sheetRows)} onClick={runPreview}>
           {busy ? 'Checking…' : 'Check the file'}
         </button>
       </section>
@@ -196,10 +240,30 @@ export default function ImportClient() {
         <section className="card">
           <h2>3. Review</h2>
           <div className="tally">
-            <div className="t ok"><b>{preview.matched}</b><span>ready</span></div>
+            <div className="t ok"><b>{preview.matched}</b><span>matched</span></div>
+            {preview.willCreate > 0 && (
+              <div className="t ok"><b>{preview.willCreate}</b><span>new donors</span></div>
+            )}
             <div className="t warn"><b>{preview.review}</b><span>need a decision</span></div>
+            {preview.duplicates > 0 && (
+              <div className="t"><b>{preview.duplicates}</b><span>already imported</span></div>
+            )}
             <div className="t bad"><b>{preview.errors}</b><span>errors</span></div>
           </div>
+
+          {preview.duplicates > 0 && (
+            <p className="hint">
+              {preview.duplicates} row{preview.duplicates === 1 ? ' is' : 's are'} already in the
+              database with the same source record id, so they will be skipped rather than counted twice.
+            </p>
+          )}
+          {preview.willCreate > 0 && (
+            <p className="hint">
+              {preview.willCreate} row{preview.willCreate === 1 ? '' : 's'} matched no existing devotee.
+              A new devotee will be created from the donor details on the row and flagged for review,
+              so you can check them afterwards under <b>Needs review</b>.
+            </p>
+          )}
 
           {preview.ignored?.length > 0 && (
             <p className="hint">Ignored columns: {preview.ignored.join(', ')}</p>
@@ -290,7 +354,9 @@ export default function ImportClient() {
           <div className="actions">
             <button onClick={() => setPreview(null)}>Cancel</button>
             <button className="p" disabled={busy} onClick={commit}>
-              {busy ? 'Importing…' : `Import ${preview.matched + (reviewRows.length - unresolved)} rows`}
+              {busy
+                ? 'Importing…'
+                : `Import ${preview.matched + (preview.willCreate || 0) + (reviewRows.length - unresolved)} rows`}
             </button>
           </div>
         </section>

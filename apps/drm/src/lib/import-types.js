@@ -61,6 +61,59 @@ export const IMPORT_TYPES = {
     lookups: { seva_category: { table: 'seva_category', column: 'seva_category_id' } },
   },
 
+  zoho_donations: {
+    label: 'Zoho donations',
+    hint: 'The Donations export from Zoho, as-is. Upload the .xlsx — no need to rename columns or convert to CSV.',
+    link: 'person',
+    table: 'donation',
+    // Zoho's own headers, mapped to our fields. Matching is case- and
+    // punctuation-insensitive, so minor header drift in a future export
+    // still lands correctly.
+    aliases: {
+      'receipt': 'receipt_no',
+      'seva category': 'seva_category',
+      'seva type': 'seva_type',
+      'festival': 'festival',
+      'seva date': 'seva_date',
+      'name': 'full_name',
+      'phone whatsapp no': 'phone',
+      'phone': 'phone',
+      'mobile': 'phone',
+      'email': 'email',
+      'amount': 'amount',
+      'mode of payment': 'payment_mode',
+      'employee name': 'collected_by',
+      'volunteer name': 'volunteer_name',
+      'address': 'address_line',
+      'id': 'external_id',
+      'added time': 'donated_on',
+    },
+    // Columns present in the export that carry no information we keep.
+    ignore: ['seva date only sunday', 'seva types', 'added user', 'modified user', 'modified time'],
+    fields: [
+      'amount', 'seva_category', 'seva_type', 'festival', 'seva_date',
+      'payment_mode', 'receipt_no', 'collected_by', 'volunteer_name',
+      'donated_on', 'external_id', 'notes',
+    ],
+    required: ['amount'],
+    numeric: ['amount'],
+    dates: ['seva_date', 'donated_on'],
+    lookups: { seva_category: { table: 'seva_category', column: 'seva_category_id', autoCreate: true } },
+    externalSource: 'zoho',
+    // The export carries the donor's own details, so a row with no match is a
+    // genuinely new donor rather than an ambiguity. Creating them beats making
+    // someone click through thousands of decisions.
+    autoCreatePerson: true,
+    flagAutoCreated: true,
+    donorFields: ['full_name', 'phone', 'email', 'address_line'],
+    fixedPaymentModes: {
+      upi: 'upi', cash: 'cash', card: 'card', 'credit card': 'card', 'debit card': 'card',
+      'net banking': 'netbanking', netbanking: 'netbanking', neft: 'bank_transfer',
+      rtgs: 'bank_transfer', imps: 'bank_transfer', 'bank transfer': 'bank_transfer',
+      cheque: 'cheque', check: 'cheque', dd: 'dd', 'demand draft': 'dd',
+    },
+  },
+
   japa_cards: {
     label: 'Japa Desk cards',
     hint: 'Each row is a japa card issued to an existing devotee.',
@@ -79,5 +132,25 @@ export const IMPORT_TYPES = {
 export function typeColumns(key) {
   const t = IMPORT_TYPES[key];
   if (!t) return [];
+  if (t.aliases) return [...new Set(Object.values(t.aliases))];
   return t.link === 'person' ? [...MATCH_FIELDS, ...t.fields] : t.fields;
+}
+
+/** "Phone (WhatsApp No)" -> "phone whatsapp no". Header matching is forgiving. */
+export function normHeader(h) {
+  return String(h || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+}
+
+/**
+ * Map one file header to a field name. Explicit aliases win; otherwise fall
+ * back to the snake_case form, so both Zoho headers and our own templates work.
+ */
+export function mapHeader(key, header) {
+  const t = IMPORT_TYPES[key];
+  const n = normHeader(header);
+  if (!t) return null;
+  if (t.ignore?.includes(n)) return null;
+  if (t.aliases?.[n]) return t.aliases[n];
+  const snake = n.replace(/ /g, '_');
+  return typeColumns(key).includes(snake) ? snake : null;
 }
