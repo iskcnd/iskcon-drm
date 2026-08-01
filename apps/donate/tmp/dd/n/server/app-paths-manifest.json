@@ -1,0 +1,17 @@
+{
+  "/_global-error/page": "app/_global-error/page.js",
+  "/_not-found/page": "app/_not-found/page.js",
+  "/api/admin/campaigns/route": "app/api/admin/campaigns/route.js",
+  "/api/admin/categories/route": "app/api/admin/categories/route.js",
+  "/api/categories/route": "app/api/categories/route.js",
+  "/api/donations/[id]/retry/route": "app/api/donations/[id]/retry/route.js",
+  "/api/donations/route": "app/api/donations/route.js",
+  "/api/internal/outbox/route": "app/api/internal/outbox/route.js",
+  "/api/lookup/route": "app/api/lookup/route.js",
+  "/api/payments/easebuzz/return/route": "app/api/payments/easebuzz/return/route.js",
+  "/api/payments/mock/route": "app/api/payments/mock/route.js",
+  "/api/payments/payu/return/route": "app/api/payments/payu/return/route.js",
+  "/api/payments/razorpay/verify/route": "app/api/payments/razorpay/verify/route.js",
+  "/page": "app/page.js",
+  "/thank-you/page": "app/thank-you/page.js"
+}

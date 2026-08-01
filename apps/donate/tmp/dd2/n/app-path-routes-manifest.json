@@ -1,0 +1,18 @@
+{
+  "/_global-error/page": "/_global-error",
+  "/_not-found/page": "/_not-found",
+  "/api/admin/campaigns/route": "/api/admin/campaigns",
+  "/api/admin/categories/route": "/api/admin/categories",
+  "/api/categories/route": "/api/categories",
+  "/api/donations/[id]/retry/route": "/api/donations/[id]/retry",
+  "/api/donations/route": "/api/donations",
+  "/api/internal/outbox/route": "/api/internal/outbox",
+  "/api/lookup/route": "/api/lookup",
+  "/api/payments/easebuzz/return/route": "/api/payments/easebuzz/return",
+  "/api/payments/mock/route": "/api/payments/mock",
+  "/api/payments/payu/return/route": "/api/payments/payu/return",
+  "/api/payments/razorpay/verify/route": "/api/payments/razorpay/verify",
+  "/api/receipts/[no]/route": "/api/receipts/[no]",
+  "/page": "/",
+  "/thank-you/page": "/thank-you"
+}

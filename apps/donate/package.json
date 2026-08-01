@@ -1,0 +1,18 @@
+{
+  "name": "@iskcon/donate",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Public donation page — PayU primary, Razorpay + Easebuzz failsafe, Zoho Flow webhook sync, 80G receipts",
+  "scripts": {
+    "dev": "next dev -p 3001",
+    "build": "next build",
+    "start": "next start -p ${PORT:-3001}"
+  },
+  "dependencies": {
+    "next": "^16.2.12",
+    "pdfkit": "^0.19.1",
+    "pg": "8.13.1",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
+  }
+}

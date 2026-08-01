@@ -1,0 +1,3 @@
+{
+  "/api/payments/easebuzz/return/route": "app/api/payments/easebuzz/return/route.js"
+}

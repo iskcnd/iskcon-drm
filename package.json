@@ -18,6 +18,10 @@
     "build:drm": "npm run build -w @iskcon/drm",
     "start:drm": "npm run start -w @iskcon/drm",
 
+    "dev:donate": "npm run dev -w @iskcon/donate",
+    "build:donate": "npm run build -w @iskcon/donate",
+    "start:donate": "npm run start -w @iskcon/donate",
+
     "build": "npm run build:drm",
     "start": "npm run start:drm"
   }
