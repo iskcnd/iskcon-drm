@@ -13,7 +13,12 @@
   "scripts": {
     "migrate": "npm run migrate -w @iskcon/db",
     "create-admin": "npm run create-admin -w @iskcon/db",
+
     "dev:drm": "npm run dev -w @iskcon/drm",
-    "build:drm": "npm run build -w @iskcon/drm"
+    "build:drm": "npm run build -w @iskcon/drm",
+    "start:drm": "npm run start -w @iskcon/drm",
+
+    "build": "npm run build:drm",
+    "start": "npm run start:drm"
   }
 }

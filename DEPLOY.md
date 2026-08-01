@@ -88,15 +88,43 @@ repo** but a different **Root Directory**.
 | Japa Desk | `apps/japa` | `japa.iskconchennai.org` |
 | Portal | `apps/portal` | `portal.iskconchennai.org` |
 
-**For the existing DRM service, this is the one setting you must change:**
+### Do NOT set Root Directory
 
-Railway → `iskcon-drm` → **Settings** → **Source** → **Root Directory** → `apps/drm`
+The obvious move is to point each service at `apps/drm`, `apps/donate` and so on. Don't.
+`package-lock.json` lives at the **repo root**, because that's where npm workspaces put it. Build
+from `apps/drm` and Railway can't see the lockfile, so it resolves fresh versions on every deploy —
+you lose the version pinning entirely and a deploy can break on a dependency you never chose.
 
-Without it Railway builds the repo root, finds no `app` directory, and the deploy fails.
+**Build from the repo root instead, and let npm target the workspace.** The root `package.json`
+carries:
+
+```json
+"build": "npm run build:drm",
+"start": "npm run start:drm"
+```
+
+Railpack finds these, installs the whole workspace against the root lockfile, and builds only the
+DRM app. Nothing to configure in the Railway UI.
+
+### Adding the second app later
+
+When `apps/donate` exists, create a second Railway service on the same repo and give it its own
+config file:
+
+Railway → the new service → **Settings** → **Config-as-code** → `apps/donate/railway.json`
+
+```json
+{
+  "build":  { "buildCommand": "npm run build:donate" },
+  "deploy": { "startCommand": "npm run start:donate" }
+}
+```
+
+`apps/drm/railway.json` already does this for DRM. Each service builds from the same root, uses the
+same lockfile, and runs a different app.
 
 Each service gets its own `DATABASE_URL` and `SESSION_SECRET`. Use the **same** `SESSION_SECRET`
-across apps only if you want a single sign-on session to work across subdomains — otherwise give
-each its own.
+across apps only if you want one sign-in to carry across subdomains — otherwise give each its own.
 
 ---
 
