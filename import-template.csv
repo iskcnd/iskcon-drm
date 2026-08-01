@@ -1,0 +1,4 @@
+full_name,initiated_name,gender,dob,mobile_cc,mobile_number,email,address_line,area,city,state,pincode,country,pan,preferred_language,profession,education,organization,marital_status,notes
+Ramesh Kumar,Radha Ramana Das,M,1980-04-12,+91,9840012345,ramesh@example.com,12 Gandhi Street,Adyar,Chennai,Tamil Nadu,600020,India,ABCDE1234F,Tamil,Engineer,B.E.,Infosys,Married,Attends Sunday feast
+Lakshmi Kumar,,F,1984-09-02,+91,9840012345,,12 Gandhi Street,Adyar,Chennai,Tamil Nadu,600020,India,,Tamil,Teacher,M.A.,,Married,Same household as above
+John Smith,,M,,+1,4155550199,john@example.com,,,San Francisco,California,,USA,,English,,,,,Overseas devotee

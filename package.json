@@ -1,0 +1,23 @@
+{
+  "name": "iskcon-drm",
+  "version": "0.1.0",
+  "private": true,
+  "description": "ISKCON Chennai DRM — Devotee Relationship Management. Devotee master, categories, donations, import/export dashboard.",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start -p ${PORT:-3000}",
+    "migrate": "node scripts/migrate.mjs",
+    "create-admin": "node scripts/create-admin.mjs"
+  },
+  "dependencies": {
+    "bcryptjs": "2.4.3",
+    "next": "^16.2.12",
+    "pg": "8.13.1",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
+  }
+}
