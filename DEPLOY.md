@@ -75,6 +75,31 @@ Use a real password manager. This account can export every devotee record.
 
 ---
 
+## Monorepo — one Railway service per app
+
+The repo now holds several apps. Each subdomain is its own Railway service pointing at the **same
+repo** but a different **Root Directory**.
+
+| App | Root Directory | Domain |
+|---|---|---|
+| DRM | `apps/drm` | `drm.iskconchennai.org` |
+| Donations | `apps/donate` | `donate.iskconchennai.org` |
+| Events | `apps/events` | `events.iskconchennai.org` |
+| Japa Desk | `apps/japa` | `japa.iskconchennai.org` |
+| Portal | `apps/portal` | `portal.iskconchennai.org` |
+
+**For the existing DRM service, this is the one setting you must change:**
+
+Railway → `iskcon-drm` → **Settings** → **Source** → **Root Directory** → `apps/drm`
+
+Without it Railway builds the repo root, finds no `app` directory, and the deploy fails.
+
+Each service gets its own `DATABASE_URL` and `SESSION_SECRET`. Use the **same** `SESSION_SECRET`
+across apps only if you want a single sign-on session to work across subdomains — otherwise give
+each its own.
+
+---
+
 ## Step 5 — create the Railway service
 
 1. <https://railway.app> → **New Project** → **Deploy from GitHub repo**
@@ -90,7 +115,7 @@ Railway → your service → **Variables** → add:
 | Variable | Value |
 |---|---|
 | `DATABASE_URL` | your pooled Neon connection string |
-| `SESSION_SECRET` | output of `openssl rand -base64 48` — a long random string |
+| `SESSION_SECRET` | output of `openssl rand -base64 48` — **must be at least 24 characters** |
 | `SESSION_HOURS` | `12` (optional) |
 | `NODE_ENV` | `production` |
 
@@ -168,8 +193,43 @@ Never edit an applied migration; write a new one.
 
 ## Troubleshooting
 
+### Railway can't find the repo
+
+The repo exists on GitHub but doesn't appear in Railway's "Deploy from GitHub repo" list.
+
+Railway's GitHub App was installed with **"Only select repositories"**, and that grant is a fixed
+list. Any repo created afterwards is invisible to Railway until you add it.
+
+1. GitHub → **Settings** → **Applications** → **Installed GitHub Apps** → **Railway** → **Configure**
+2. *Repository access* → **All repositories**, or add `iskcon-drm` to the selected list
+3. **Save**, then reload the New Project page in Railway
+
+Still missing? Railway caches the list — disconnect and reconnect GitHub under Railway
+Account Settings → Integrations. If the repo belongs to a GitHub **organisation** rather than a
+personal account, the app has to be installed on the organisation separately, and an org owner
+has to approve it.
+
+### Deploying without GitHub
+
+If the GitHub connection stays stubborn, deploy straight from your machine:
+
+```bash
+npm i -g @railway/cli
+railway login
+railway init          # creates the project
+railway up            # uploads and builds this folder
+```
+
+Set the variables afterwards with `railway variables --set DATABASE_URL=... --set SESSION_SECRET=...`,
+or in the web dashboard. You lose auto-deploy-on-push, so it's a fallback rather than the goal —
+but it gets you running today.
+
+---
+
 | Symptom | Cause |
 |---|---|
+| "Unexpected end of JSON input" on sign-in | The server returned an empty body. Usually a **wrong or misspelled custom domain** pointing somewhere that isn't Railway, or the app crashed before replying. Test the `*.up.railway.app` URL first to isolate — if that works, the problem is your domain or DNS, not the app |
+| Password accepted but you land back on `/login` | `SESSION_SECRET` is missing or **shorter than 24 characters**. Check deploy logs for "SESSION_SECRET is only N characters" |
 | Redirect loop on `/login` | `SESSION_SECRET` differs between builds, or is missing |
 | "Not signed in" straight after signing in | Cookie rejected — confirm you're on HTTPS in production |
 | `getaddrinfo ENOTFOUND` in logs | `DATABASE_URL` wrong or missing |

@@ -1,23 +1,19 @@
 {
-  "name": "iskcon-drm",
+  "name": "iskcon-platform",
   "version": "0.1.0",
   "private": true,
-  "description": "ISKCON Chennai DRM — Devotee Relationship Management. Devotee master, categories, donations, import/export dashboard.",
+  "description": "ISKCON Chennai platform — one Neon database, several small apps on their own subdomains",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
   "engines": {
     "node": ">=20"
   },
   "scripts": {
-    "dev": "next dev",
-    "build": "next build",
-    "start": "next start -p ${PORT:-3000}",
-    "migrate": "node scripts/migrate.mjs",
-    "create-admin": "node scripts/create-admin.mjs"
-  },
-  "dependencies": {
-    "bcryptjs": "2.4.3",
-    "next": "^16.2.12",
-    "pg": "8.13.1",
-    "react": "^19.0.0",
-    "react-dom": "^19.0.0"
+    "migrate": "npm run migrate -w @iskcon/db",
+    "create-admin": "npm run create-admin -w @iskcon/db",
+    "dev:drm": "npm run dev -w @iskcon/drm",
+    "build:drm": "npm run build -w @iskcon/drm"
   }
 }

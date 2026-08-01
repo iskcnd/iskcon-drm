@@ -1,0 +1,20 @@
+{
+  "name": "@iskcon/drm",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Devotee Relationship Management — master records, categories, donations, imports, insights",
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start -p ${PORT:-3000}"
+  },
+  "dependencies": {
+    "bcryptjs": "2.4.3",
+    "chart.js": "4.4.6",
+    "exceljs": "4.4.0",
+    "next": "^16.2.12",
+    "pg": "8.13.1",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
+  }
+}

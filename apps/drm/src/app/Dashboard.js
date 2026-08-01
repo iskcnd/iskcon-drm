@@ -3,10 +3,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 const RANK = { view_only: 0, data_entry: 1, module_manager: 2, super_admin: 3 };
-const ROLE_LABEL = {
-  super_admin: 'Super admin', module_manager: 'Module manager',
-  data_entry: 'Data entry', view_only: 'View only',
-};
 
 async function api(op, payload) {
   const r = await fetch('/api/data', {
@@ -214,18 +210,6 @@ export default function Dashboard({ user }) {
           <CatBtn view="dups" tag={null} label="Shared mobiles" n={meta.counts.dups} />
           <CatBtn view="untagged" tag={null} label="Uncategorised" n={meta.counts.untagged} />
           {rank >= 2 && <CatBtn view="batches" tag={null} label="Import batches" />}
-        </div>
-        <div id="who">
-          <div style={{ flex: 1 }}>
-            <b>{user.name}</b>{ROLE_LABEL[user.role]}
-          </div>
-          <button
-            style={{ padding: '4px 9px', fontSize: 12 }}
-            onClick={async () => {
-              await fetch('/api/auth/logout', { method: 'POST' });
-              window.location.href = '/login';
-            }}
-          >Sign out</button>
         </div>
       </div>
 

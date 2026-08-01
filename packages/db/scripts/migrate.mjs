@@ -10,7 +10,7 @@ import path from 'node:path';
 import pg from 'pg';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
-const dbDir = path.join(here, '..', 'db');
+const dir = path.join(here, '..', 'migrations');
 
 if (!process.env.DATABASE_URL) {
   console.error('DATABASE_URL is not set.');
@@ -24,15 +24,15 @@ const client = new pg.Client({
 
 await client.connect();
 
-const files = (await readdir(dbDir)).filter((f) => f.endsWith('.sql')).sort();
+const files = (await readdir(dir)).filter((f) => f.endsWith('.sql')).sort();
 if (!files.length) {
-  console.error('No .sql files found in db/');
+  console.error('No .sql files found in migrations/');
   process.exit(1);
 }
 
 for (const f of files) {
   process.stdout.write(`  ${f} … `);
-  const sql = await readFile(path.join(dbDir, f), 'utf8');
+  const sql = await readFile(path.join(dir, f), 'utf8');
   try {
     await client.query(sql);
     console.log('ok');

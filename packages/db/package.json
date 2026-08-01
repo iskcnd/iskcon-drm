@@ -1,0 +1,15 @@
+{
+  "name": "@iskcon/db",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Shared schema migrations and setup scripts. Every app on the platform reads the same Neon database.",
+  "scripts": {
+    "migrate": "node scripts/migrate.mjs",
+    "create-admin": "node scripts/create-admin.mjs"
+  },
+  "dependencies": {
+    "bcryptjs": "2.4.3",
+    "pg": "8.13.1"
+  }
+}

@@ -48,7 +48,15 @@ export async function POST(req) {
     return NextResponse.json({ error: 'Incorrect email or password' }, { status: 401 });
   }
 
+  // Create the session BEFORE recording the login. If session creation fails
+  // (bad SESSION_SECRET, say), last_login_at must not claim a login happened.
+  try {
+    await createSession(user);
+  } catch (err) {
+    console.error('[login] session creation failed:', err.message);
+    return NextResponse.json({ error: `Server misconfigured — ${err.message}` }, { status: 500 });
+  }
+
   await q('UPDATE app_user SET last_login_at=now() WHERE id=$1', [user.id]);
-  await createSession(user);
   return NextResponse.json({ data: { name: user.full_name, role: user.role } });
 }

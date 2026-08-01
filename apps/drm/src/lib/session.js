@@ -3,10 +3,20 @@ import { cookies } from 'next/headers';
 
 export const COOKIE = 'drm_session';
 
+const MIN_SECRET_LEN = 24;
+
 function secret() {
   const s = process.env.SESSION_SECRET;
-  if (!s || s.length < 24) {
-    throw new Error('SESSION_SECRET is missing or too short. Generate one with: openssl rand -base64 48');
+  if (!s) {
+    throw new Error(
+      'SESSION_SECRET is not set. Add it as an environment variable. '
+      + 'Generate one with: openssl rand -base64 48');
+  }
+  if (s.length < MIN_SECRET_LEN) {
+    throw new Error(
+      `SESSION_SECRET is only ${s.length} characters; at least ${MIN_SECRET_LEN} are required `
+      + '(it signs login cookies, so a guessable value lets someone forge a super-admin session). '
+      + 'Generate one with: openssl rand -base64 48');
   }
   return s;
 }

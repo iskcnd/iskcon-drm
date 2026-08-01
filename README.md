@@ -42,24 +42,50 @@ or one click — no migration, no developer. A person can hold several at once.
 
 ## Layout
 
+This is a **monorepo**: several small apps, each on its own subdomain and its own Railway
+service, all reading one Neon database.
+
 ```
-db/                     numbered SQL migrations — all idempotent, run in filename order
-  001_foundation.sql    person master, tags, occasions, audit, imports, users
-  002_donations.sql     seva categories + donations
-  003_api_surface.sql   curated read-only views for third parties
-  004_seed_categories.sql
-scripts/
-  migrate.mjs           applies every db/*.sql
-  create-admin.mjs      creates or updates a login
-src/
-  middleware.js         auth gate — everything except /login is protected
-  lib/db.js             pg pool; tx() sets app.actor_id so the audit trail records who
-  lib/session.js        HMAC-signed cookie sessions, role capabilities (Node runtime)
-  lib/session-edge.js   same verification via Web Crypto, for middleware (Edge runtime)
-  lib/ops.js            every allowed operation. The browser cannot send SQL
-  app/Dashboard.js      the whole dashboard UI
-  app/api/data/route.js single endpoint; checks role capability then dispatches to ops
+packages/db/            shared by every app — the database is the contract
+  migrations/           numbered, idempotent, applied in filename order
+    001_foundation.sql  person master, tags, occasions, audit, imports, users
+    002_donations.sql   seva categories + donations
+    003_api_surface.sql curated read-only views for third parties
+    004_seed_categories.sql
+    005_japa.sql        japa cards + Japa Puja enrolment
+  scripts/migrate.mjs        applies every migration
+  scripts/create-admin.mjs   creates or updates a login
+
+apps/drm/               Devotee Relationship Management  → drm.iskconchennai.org
+  src/middleware.js         auth gate — everything except /login is protected
+  src/lib/db.js             pg pool; tx() sets app.actor_id so the audit trail records who
+  src/lib/session.js        HMAC-signed cookie sessions, role capabilities (Node runtime)
+  src/lib/session-edge.js   same verification via Web Crypto, for middleware (Edge runtime)
+  src/lib/ops.js            every allowed operation. The browser cannot send SQL
+  src/lib/ops-import.js     import matching + two-phase commit
+  src/lib/ops-analytics.js  everything the insights page charts
+  src/lib/import-types.js   one entry per import type — add a type here, the UI follows
+  src/app/Dashboard.js      the devotee grid
+  src/app/import/           import page
+  src/app/insights/         charts + xlsx export
+  src/app/api/data/route.js single endpoint; checks role capability then dispatches to ops
+  src/app/api/export/route.js xlsx generation
+
+apps/donate/            not built yet  → donate.iskconchennai.org
+apps/events/            not built yet  → events.iskconchennai.org
+apps/japa/              not built yet  → japa.iskconchennai.org
+apps/portal/            not built yet  → portal.iskconchennai.org
 ```
+
+### Why the apps don't share runtime code yet
+
+`packages/db` holds the migrations and setup scripts, because the schema genuinely is shared —
+every app reads the same tables, and there must be exactly one definition of them.
+
+The pool, session and ops code still lives inside `apps/drm`. Extracting a shared runtime layer
+before the second app exists would mean designing an abstraction against imagined requirements.
+When `donate` is written we'll see what's actually common and lift that out then. Duplicating
+once and extracting later is cheaper than unpicking a wrong abstraction.
 
 ### Why there's no "run SQL" endpoint
 
@@ -83,14 +109,34 @@ button is not security — the check that matters is on the server.
 
 ---
 
+## Pages
+
+| Page | Who | What |
+|---|---|---|
+| `/` | everyone | Devotee grid — categories, search, filters, inline edit, CSV import/export, batches |
+| `/import` | module manager+ | Typed imports: devotees, IYS Boys/Girls, Unnati Club, donations, japa cards |
+| `/insights` | everyone | Charts across donations, growth, demographics, segments, data quality. Export to xlsx |
+
+### How imports match a row to a devotee
+
+For anything that belongs to an existing devotee (donations, japa cards), the row is resolved in
+this order: **`person_no` → `email` → `mobile_number`**.
+
+At each step, if `full_name` is present and disagrees with the record found, the row is **held for
+review** rather than linked. If several devotees share the number — normal in families — and the
+name doesn't pick one out, it's held too. Nothing is guessed.
+
+The operator then decides per row: link to a specific devotee, create a new one, or skip.
+Undecided rows are skipped, never assumed. Preview writes nothing; only commit does.
+
 ## Local development
 
 ```bash
-npm install
-cp .env.example .env.local        # fill in DATABASE_URL and SESSION_SECRET
-npm run migrate                   # build the schema
-node scripts/create-admin.mjs "you@example.org" "Your Name" "a-strong-password" super_admin
-npm run dev                       # http://localhost:3000
+npm install                       # installs every workspace
+cp apps/drm/.env.example apps/drm/.env.local
+npm run migrate                   # build the schema  (DATABASE_URL must be set)
+npm run create-admin -- "you@example.org" "Your Name" "a-strong-password" super_admin
+npm run dev:drm                   # http://localhost:3000
 ```
 
 Generate a session secret with `openssl rand -base64 48`.

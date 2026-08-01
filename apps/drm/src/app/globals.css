@@ -10,7 +10,88 @@ button:disabled{opacity:.45;cursor:not-allowed}
 input,select,textarea{font:inherit;border:1px solid var(--line);background:var(--card);color:var(--ink);border-radius:7px;padding:6px 9px;width:100%}
 input:focus,select:focus,textarea:focus{outline:2px solid var(--accbg);border-color:var(--acc)}
 
-.shell{display:flex;height:100vh;overflow:hidden}
+/* ---------------------------------------------------------------- top nav */
+#nav{display:flex;align-items:center;gap:20px;height:48px;padding:0 18px;background:var(--card);border-bottom:1px solid var(--line);flex-wrap:nowrap;overflow-x:auto}
+.nav-brand{display:flex;flex-direction:column;line-height:1.25;flex:0 0 auto}
+.nav-brand b{font-size:13px;font-weight:600}
+.nav-brand span{font-size:10px;color:var(--faint)}
+.nav-items{display:flex;gap:3px;flex:0 0 auto}
+.nav-link{display:block;padding:6px 12px;border-radius:7px;font-size:13px;color:var(--mut);text-decoration:none}
+.nav-link:hover{background:var(--bg)}
+.nav-link.on{background:var(--accbg);color:var(--acc);font-weight:500}
+.nav-apps{display:flex;align-items:center;gap:8px;flex:1;min-width:0}
+.nav-apps-label{font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:var(--faint);border-left:1px solid var(--line);padding-left:16px}
+.nav-soon{font-size:12px;color:#b9b9b3;white-space:nowrap;cursor:default}
+.nav-user{display:flex;align-items:center;gap:10px;flex:0 0 auto;font-size:11px;color:var(--faint);line-height:1.25}
+.nav-user b{display:block;font-size:12px;color:var(--ink);font-weight:500}
+.nav-user button{padding:4px 10px;font-size:12px}
+
+/* ------------------------------------------------------------ page shells */
+.page{min-height:100vh;display:flex;flex-direction:column}
+.content{max-width:1180px;width:100%;margin:0 auto;padding:26px 20px 70px}
+.content h1{font-size:21px;font-weight:600;margin-bottom:3px}
+.content h2{font-size:15px;font-weight:600;margin-bottom:14px}
+.content h3{font-size:13px;font-weight:600;margin:18px 0 8px}
+.lede{color:var(--faint);font-size:13px;margin-bottom:20px;line-height:1.6}
+.dim{color:var(--faint)}
+.head{display:flex;justify-content:space-between;align-items:flex-start;gap:16px;flex-wrap:wrap;margin-bottom:18px}
+.headctl{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.headctl select{width:auto}
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:18px 20px;margin-bottom:18px}
+.card>textarea{margin:10px 0}
+.card>input[type=file]{margin-bottom:10px}
+.actions{display:flex;gap:8px;justify-content:flex-end;margin-top:16px}
+.okbox{background:var(--okbg);border:1px solid #cfe2d6;color:var(--ok);padding:11px 14px;border-radius:8px;font-size:13px;margin-bottom:16px}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:18px}
+@media (max-width:900px){.two{grid-template-columns:1fr}}
+.panel{min-width:0}
+.panel h3{margin-top:0}
+
+/* --------------------------------------------------------------- import */
+.typegrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(215px,1fr));gap:10px}
+.typecard{text-align:left;padding:12px 14px;border-radius:10px;border:1px solid var(--line);background:var(--card);display:block}
+.typecard b{display:block;font-size:13px;font-weight:500;margin-bottom:3px}
+.typecard span{font-size:11px;color:var(--faint);line-height:1.5;display:block}
+.typecard.on{border-color:var(--acc);background:var(--accbg)}
+.typecard.on b{color:var(--acc)}
+.tally{display:flex;gap:12px;margin-bottom:16px;flex-wrap:wrap}
+.tally .t{padding:10px 16px;border-radius:9px;border:1px solid var(--line);min-width:104px}
+.tally .t b{display:block;font-size:19px;font-weight:600;font-variant-numeric:tabular-nums}
+.tally .t span{font-size:10px;text-transform:uppercase;letter-spacing:.05em;color:var(--faint)}
+.tally .t.ok{background:var(--okbg);border-color:#cfe2d6}
+.tally .t.ok b{color:var(--ok)}
+.tally .t.warn{background:var(--warnbg);border-color:#eee1c4}
+.tally .t.warn b{color:var(--warn)}
+.tally .t.bad{background:var(--dangbg);border-color:#eed6d6}
+.tally .t.bad b{color:var(--dang)}
+.mini{width:100%;font-size:12.5px;border-collapse:collapse;background:transparent}
+.mini th{position:static;background:transparent;border-bottom:1px solid var(--line);padding:7px 8px;font-size:10px}
+.mini td{padding:7px 8px;border-bottom:1px solid var(--line2);vertical-align:middle}
+.mini td.num{text-align:right;font-variant-numeric:tabular-nums}
+.mini select{width:auto;min-width:200px;font-size:12px;padding:4px 7px}
+.mini .dim{color:var(--faint);font-size:11.5px}
+.warn{color:var(--warn)}
+.bad{color:var(--dang)}
+code.req{border-color:var(--acc);color:var(--acc)}
+.content code{margin-right:4px;display:inline-block;margin-bottom:3px}
+
+/* -------------------------------------------------------------- insights */
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:20px}
+.kpi{background:var(--card);border:1px solid var(--line);border-radius:11px;padding:14px 16px}
+.kpi b{display:block;font-size:21px;font-weight:600;font-variant-numeric:tabular-nums;letter-spacing:-.01em}
+.kpi span{font-size:10px;text-transform:uppercase;letter-spacing:.05em;color:var(--faint)}
+.kpi em{display:block;font-style:normal;font-size:10.5px;color:#b9b9b3;margin-top:3px}
+.quality{display:flex;flex-direction:column;gap:9px}
+.qrow{display:flex;align-items:center;gap:12px;font-size:12.5px}
+.qlabel{flex:0 0 190px;color:var(--mut)}
+.qbar{flex:1;height:7px;background:var(--bg);border-radius:20px;overflow:hidden;border:1px solid var(--line2)}
+.qfill{display:block;height:100%;background:var(--acc);border-radius:20px}
+.qfill.good{background:var(--ok)}
+.qfill.bad{background:var(--dang)}
+.qval{flex:0 0 105px;text-align:right;font-variant-numeric:tabular-nums}
+.qval em{font-style:normal;color:var(--faint);font-size:11px;margin-left:5px}
+
+.shell{display:flex;height:calc(100vh - 48px);overflow:hidden}
 #side{width:236px;flex:0 0 236px;background:var(--card);border-right:1px solid var(--line);display:flex;flex-direction:column;overflow:hidden}
 #brand{padding:15px 16px 12px;border-bottom:1px solid var(--line2)}
 #brand h1{font-size:14px;font-weight:600;letter-spacing:-.01em}

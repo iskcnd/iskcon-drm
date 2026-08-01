@@ -18,8 +18,20 @@ export default function Login() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email, password }),
       });
-      const j = await r.json();
-      if (!r.ok) throw new Error(j.error || 'Sign in failed');
+
+      // An empty or non-JSON body means the server crashed, or the request never
+      // reached it (wrong domain, DNS, proxy). Say so instead of leaking a
+      // confusing JSON.parse error.
+      const text = await r.text();
+      let j;
+      try {
+        j = JSON.parse(text);
+      } catch {
+        throw new Error(
+          `Server returned ${r.status} with no readable response. `
+          + 'Check the deploy logs, and confirm you are on the correct domain.');
+      }
+      if (!r.ok) throw new Error(j.error || `Sign in failed (${r.status})`);
       const next = new URLSearchParams(window.location.search).get('next') || '/';
       window.location.href = next;
     } catch (e2) {
