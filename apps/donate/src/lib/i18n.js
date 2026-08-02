@@ -3,7 +3,7 @@
  *  Tamil/Hindi drafted by Claude — needs native review before launch (D25). */
 export const I18N = {
   en: {
-    tagline: 'Hare Krishna Movement',
+    tagline: 'Hare Krishna',
     heroverse: 'patraṁ puṣpaṁ phalaṁ toyam…',
     herotitle: 'Whatever you offer with love, Krishna accepts.',
     herosub: 'Your seva lights the lamps, dresses the Deities, and feeds every soul who walks into His home. Not one rupee sits idle — it becomes prasadam, garlands, and grace.',
@@ -46,7 +46,7 @@ export const I18N = {
     payfailed: 'That payment did not go through. Trying the next secure option…',
   },
   ta: {
-    tagline: 'ஹரே கிருஷ்ணா இயக்கம்',
+    tagline: 'ஹரே கிருஷ்ணா ',
     heroverse: 'பத்ரம் புஷ்பம் பலம் தோயம்…',
     herotitle: 'அன்புடன் அளிப்பதை எல்லாம் கிருஷ்ணர் ஏற்கிறார்.',
     herosub: 'உங்கள் சேவை தீபங்களை ஏற்றுகிறது, பகவானை அலங்கரிக்கிறது, அவர் இல்லத்திற்கு வரும் ஒவ்வொருவருக்கும் உணவளிக்கிறது. ஒரு ரூபாய் கூட வீணாவதில்லை — அது பிரசாதமாகவும், மாலையாகவும், அருளாகவும் மாறுகிறது.',
@@ -89,7 +89,7 @@ export const I18N = {
     payfailed: 'அந்த கட்டணம் நிறைவேறவில்லை. அடுத்த பாதுகாப்பான வழியை முயற்சிக்கிறோம்…',
   },
   hi: {
-    tagline: 'हरे कृष्ण आंदोलन',
+    tagline: 'हरे कृष्ण',
     heroverse: 'पत्रं पुष्पं फलं तोयम्…',
     herotitle: 'प्रेम से अर्पित हर वस्तु कृष्ण स्वीकार करते हैं।',
     herosub: 'आपकी सेवा दीप जलाती है, विग्रहों का श्रृंगार करती है, और उनके घर आने वाली हर आत्मा को भोजन कराती है। एक भी रुपया व्यर्थ नहीं जाता — वह प्रसादम्, माला और कृपा बन जाता है।',
