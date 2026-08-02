@@ -10,6 +10,8 @@ const ROLE_LABEL = {
 
 const ITEMS = [
   { href: '/', label: 'Devotees', minRank: 0 },
+  { href: '/donations', label: 'Donations', minRank: 0 },
+  { href: '/seva', label: 'Seva ops', minRank: 0 },
   { href: '/import', label: 'Import', minRank: 2 },
   { href: '/insights', label: 'Insights', minRank: 0 },
 ];

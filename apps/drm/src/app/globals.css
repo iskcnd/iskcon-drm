@@ -91,6 +91,32 @@ code.req{border-color:var(--acc);color:var(--acc)}
 .qval{flex:0 0 105px;text-align:right;font-variant-numeric:tabular-nums}
 .qval em{font-style:normal;color:var(--faint);font-size:11px;margin-left:5px}
 
+/* ------------------------------------------------------------------ tabs */
+.tabs{display:flex;gap:4px;border-bottom:1px solid var(--line);margin-bottom:18px;flex-wrap:wrap}
+.tab{border:0;background:none;padding:9px 14px;font-size:13px;color:var(--mut);border-radius:8px 8px 0 0;border-bottom:2px solid transparent;margin-bottom:-1px}
+.tab:hover{background:var(--bg)}
+.tab.on{color:var(--acc);border-bottom-color:var(--acc);font-weight:500}
+
+.mini a.nav-link{padding:4px 10px}
+.printhead{display:none}
+
+/* --------------------------------------------------------------- print */
+@media print{
+  #nav,.no-print,.headctl,.tabs{display:none!important}
+  body{background:#fff}
+  .page,.content{display:block;max-width:none;padding:0}
+  .printhead{display:block;margin-bottom:14px}
+  .printhead h2{font-size:18px;font-weight:600}
+  .printhead p{font-size:13px;color:#444}
+  .kpis{grid-template-columns:repeat(2,140px);gap:8px;margin-bottom:14px}
+  .kpi{border:1px solid #ccc;padding:8px 10px}
+  .sheet{font-size:11.5px}
+  .sheet th{background:#eee!important;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+  .sheet td,.sheet th{border-bottom:1px solid #ddd;padding:5px 6px}
+  .sheet tr{page-break-inside:avoid}
+  .dim{color:#777}
+}
+
 .shell{display:flex;height:calc(100vh - 48px);overflow:hidden}
 #side{width:236px;flex:0 0 236px;background:var(--card);border-right:1px solid var(--line);display:flex;flex-direction:column;overflow:hidden}
 #brand{padding:15px 16px 12px;border-bottom:1px solid var(--line2)}

@@ -2,6 +2,7 @@ import { q, tx } from './db.js';
 import { CAPABILITY } from './session.js';
 import { IMPORT_OPS } from './ops-import.js';
 import { ANALYTICS_OPS } from './ops-analytics.js';
+import { DONATION_OPS } from './ops-donations.js';
 
 /**
  * Named operations. The browser can only invoke these by name — it can never
@@ -362,7 +363,7 @@ export const OPS = {
   },
 };
 
-Object.assign(OPS, IMPORT_OPS, ANALYTICS_OPS);
+Object.assign(OPS, IMPORT_OPS, ANALYTICS_OPS, DONATION_OPS);
 
 export async function runOp(name, payload, user) {
   const op = OPS[name];
