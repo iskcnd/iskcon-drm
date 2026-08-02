@@ -76,9 +76,16 @@ export async function buildPayload(client, donationId) {
   };
 }
 
-/** Called inside the markPaid transaction. */
+/**
+ * Called inside the markPaid transaction.
+ *
+ * The row is queued even when ZOHO_WEBHOOK_URL is unset. During the migration
+ * every donation must reach Zoho, and a donation that was never queued leaves
+ * no trace at all — you'd have to diff both systems to find it. Queue it, let
+ * the runner skip delivery, and the backlog is visible and replayable the
+ * moment the URL is configured.
+ */
 export async function enqueueZohoWebhook(client, donationId) {
-  if (!process.env.ZOHO_WEBHOOK_URL) return; // sync disabled
   const payload = await buildPayload(client, donationId);
   await client.query(
     `INSERT INTO webhook_outbox (donation_id, payload) VALUES ($1, $2)`,
@@ -92,10 +99,13 @@ const BACKOFF_MINUTES = [1, 5, 15, 60, 180, 360, 720, 1440]; // then dead
 export async function processOutbox(limit = 20) {
   const url = process.env.ZOHO_WEBHOOK_URL;
   if (!url) return { skipped: true };
+  // SKIP LOCKED so a manual run and the background runner can never pick up the
+  // same row and send a donation to Zoho twice.
   const due = await q(
     `SELECT id, donation_id, payload, attempts FROM webhook_outbox
       WHERE status IN ('pending','failed') AND next_attempt_at <= now()
-      ORDER BY id LIMIT $1`,
+      ORDER BY id LIMIT $1
+      FOR UPDATE SKIP LOCKED`,
     [limit]
   );
   let sent = 0, failed = 0;

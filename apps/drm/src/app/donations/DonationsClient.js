@@ -485,32 +485,142 @@ function Occasions({ onErr }) {
 }
 
 /* ============================================================ sync health */
+const STATUS_PILL = { sent: 'g', pending: 'w', failed: 'r', dead: 'r' };
+
 function SyncHealth({ onErr }) {
   const [d, setD] = useState(null);
-  useEffect(() => { api('don.syncHealth').then(setD).catch((e) => onErr(e.message)); }, [onErr]);
+  const [busy, setBusy] = useState('');
+  const [result, setResult] = useState(null);
+  const [payload, setPayload] = useState(null);
+
+  const load = useCallback(() => api('sync.overview').then(setD).catch((e) => onErr(e.message)), [onErr]);
+  useEffect(() => { load(); }, [load]);
+
+  async function act(op, label, args) {
+    setBusy(label); setResult(null);
+    try { setResult({ label, data: await api(op, args) }); load(); }
+    catch (e) { onErr(e.message); }
+    setBusy('');
+  }
+
+  const count = (s) => Number(d?.byStatus.find((x) => x.status === s)?.n || 0);
 
   return (
     <>
       <p className="lede">
-        Zoho is temporary — the DRM is the system of record. Until it&apos;s switched off, every
-        donation must reach it. Anything stuck here needs attention.
+        Zoho is temporary — the DRM is the system of record. Until it&apos;s switched off,
+        every donation must reach it.
       </p>
+
+      {d && !d.webhookConfigured && (
+        <div className="errbox">
+          <b>ZOHO_WEBHOOK_URL is not set on this service.</b> Donations are still being queued,
+          so nothing is lost — but nothing is being delivered either.
+        </div>
+      )}
+
+      {d && d.missingRows > 0 && (
+        <div className="errbox">
+          <b>{d.missingRows} paid donation{d.missingRows === 1 ? '' : 's'} have no outbox row at all.</b>{' '}
+          Nothing is retrying them. Use <b>Queue missing</b> below.
+        </div>
+      )}
+
       {!d ? <p className="dim">Loading…</p> : (
         <>
           <div className="kpis">
-            {d.byStatus.length === 0 && <div className="kpi"><b>0</b><span>Queued</span></div>}
-            {d.byStatus.map((s) => (
-              <div className="kpi" key={s.status}><b>{s.n}</b><span>{s.status}</span></div>
-            ))}
+            <div className="kpi"><b>{count('sent')}</b><span>Sent</span></div>
+            <div className="kpi"><b>{count('pending')}</b><span>Pending</span></div>
+            <div className="kpi"><b>{count('failed')}</b><span>Failed</span></div>
+            <div className="kpi"><b>{count('dead')}</b><span>Given up</span></div>
+            <div className="kpi">
+              <b>{d.categoriesMapped}</b><span>Categories mapped</span>
+              <em>rest use the default seva type</em>
+            </div>
           </div>
-          {d.stuck.length > 0 && (
-            <>
-              <h3 className="bad">Stuck — more than 3 attempts</h3>
-              <Table head={['Outbox', 'Donation', 'Attempts', 'Last error']}
-                rows={d.stuck.map((x) => [x.id, x.donation_id, x.attempts, x.last_error || '—'])} />
-            </>
+
+          <div className="actions" style={{ justifyContent: 'flex-start', marginBottom: 14 }}>
+            <button disabled={!!busy} onClick={() => act('sync.testWebhook', 'test')}>
+              {busy === 'test' ? 'Sending…' : 'Send test to Zoho'}
+            </button>
+            <button disabled={!!busy} onClick={() => act('sync.runNow', 'run')}>
+              {busy === 'run' ? 'Running…' : 'Deliver now'}
+            </button>
+            <button disabled={!!busy || (count('failed') + count('dead') === 0)}
+              onClick={() => act('sync.retry', 'retry', { all: true })}>
+              Retry all failed
+            </button>
+            <button disabled={!!busy || !d.missingRows}
+              onClick={() => act('sync.backfill', 'backfill')}>
+              Queue missing
+            </button>
+            <button onClick={load}>Refresh</button>
+          </div>
+
+          {result && (
+            <div className={result.data?.ok === false ? 'errbox' : 'okbox'}>
+              <b>{result.label === 'test' ? 'Test webhook' : result.label === 'run' ? 'Delivery pass' : 'Done'}</b>
+              <pre style={{ whiteSpace: 'pre-wrap', fontSize: 12, marginTop: 6 }}>
+                {JSON.stringify(result.data, null, 2).slice(0, 1500)}
+              </pre>
+            </div>
           )}
+
+          <p className="hint">
+            The donate service delivers automatically about once a minute. “Deliver now” just
+            asks it to run immediately.
+            {d.oldestPending && <> Oldest undelivered: <b>{String(d.oldestPending).slice(0, 16).replace('T', ' ')}</b>.</>}
+          </p>
+
+          <h3>Recent queue</h3>
+          {d.recent.length === 0
+            ? <div className="empty">Nothing queued yet.</div>
+            : (
+              <table className="mini">
+                <thead>
+                  <tr><th>#</th><th>Status</th><th>Donation</th><th>Donor</th>
+                    <th className="num">Amount</th><th className="num">Tries</th>
+                    <th>Last error</th><th /></tr>
+                </thead>
+                <tbody>
+                  {d.recent.map((r) => (
+                    <tr key={r.id}>
+                      <td>{r.id}</td>
+                      <td><span className={'pill ' + (STATUS_PILL[r.status] || '')}>{r.status}</span></td>
+                      <td>{r.receipt_no || r.donation_id}</td>
+                      <td>{r.donor || '—'}</td>
+                      <td className="num">{r.amount ? inr(r.amount) : '—'}</td>
+                      <td className="num">{r.attempts}</td>
+                      <td className="dim" title={r.last_error || ''}>
+                        {(r.last_error || '').slice(0, 60) || '—'}
+                      </td>
+                      <td>
+                        <button onClick={() => api('sync.payload', { id: r.id }).then(setPayload).catch((e) => onErr(e.message))}>View</button>
+                        {r.status !== 'sent' && (
+                          <button onClick={() => act('sync.retry', 'retry', { id: r.id })}>Retry</button>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
         </>
+      )}
+
+      {payload && (
+        <div className="mask" onClick={(e) => e.target === e.currentTarget && setPayload(null)}>
+          <div className="dlg">
+            <h3>Outbox #{payload.id} — payload sent to Zoho</h3>
+            <div className="bd">
+              {payload.last_error && <div className="errbox">{payload.last_error}</div>}
+              <pre style={{ whiteSpace: 'pre-wrap', fontSize: 12 }}>
+                {JSON.stringify(payload.payload, null, 2)}
+              </pre>
+            </div>
+            <div className="ft"><button className="p" onClick={() => setPayload(null)}>Close</button></div>
+          </div>
+        </div>
       )}
     </>
   );
