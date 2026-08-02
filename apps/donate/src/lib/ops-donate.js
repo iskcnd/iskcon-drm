@@ -1,6 +1,7 @@
 import { q, tx } from './db.js';
 import { maskName, orderRef } from './util.js';
 import { enqueueZohoWebhook } from './zoho.js';
+import { parsePhone } from './phone.js';
 
 /** Public actor sentinel for audit rows written by the donation page. */
 const PUBLIC_ACTOR = process.env.PUBLIC_ACTOR_ID || null;
@@ -32,14 +33,18 @@ export async function getPageContent() {
  * D13/D24: one mobile → possibly many people. Returns ONLY masked name + area,
  * keyed by opaque person id. Nothing else ever leaves this endpoint.
  */
-export async function lookupByMobile(mobile10) {
+export async function lookupByMobile(national, cc = '+91') {
+  // Match on the full international form so a +1 and a +91 number that happen
+  // to share national digits are never confused. alt_mobile counts too — a
+  // devotee may have given the temple a second number.
+  const e164 = `${cc}${national}`;
   const r = await q(
     `SELECT id, display_name, area, city
        FROM person
-      WHERE is_active AND mobile_number = $1
+      WHERE is_active AND (mobile_e164 = $1 OR alt_mobile_e164 = $1)
       ORDER BY created_at
       LIMIT 6`,
-    [mobile10]
+    [e164]
   );
   return r.rows.map((p) => ({
     person_id: p.id,
@@ -90,16 +95,24 @@ export async function createDonation(input) {
       if (!newPerson?.name || !newPerson?.mobile) {
         throw Object.assign(new Error('Name and mobile are required'), { status: 422 });
       }
-      const dupe = await c.query(`SELECT count(*)::int AS n FROM person WHERE mobile_number=$1`, [newPerson.mobile]);
+
+      // Parse before storing. Writing the raw string means the person trigger
+      // strips the "+" from "+9198..." and then prefixes +91 again, producing
+      // +91918... — a wrong number, saved without complaint.
+      const phone = parsePhone(newPerson.mobile, newPerson.cc);
+      if (!phone.ok) throw Object.assign(new Error(phone.reason), { status: 422 });
+
+      const dupe = await c.query(
+        `SELECT count(*)::int AS n FROM person WHERE mobile_e164 = $1`, [phone.e164]);
       const shared = dupe.rows[0].n > 0;
       const ins = await c.query(
-        `INSERT INTO person (full_name, mobile_number, email, pan, whatsapp_optin,
+        `INSERT INTO person (full_name, mobile_cc, mobile_number, email, pan, whatsapp_optin,
                              address_line, area, city, state, pincode,
                              source, needs_review, review_reason)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,'donation-page',$11,$12)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,'donation-page',$12,$13)
          RETURNING id`,
         [
-          newPerson.name.trim(), newPerson.mobile, newPerson.email || null,
+          newPerson.name.trim(), phone.cc, phone.national, newPerson.email || null,
           newPerson.pan ? newPerson.pan.toUpperCase() : null, !!newPerson.whatsappOptin,
           newPerson.addressLine || null, newPerson.area || null, newPerson.city || null,
           newPerson.state || null, newPerson.pincode || null,

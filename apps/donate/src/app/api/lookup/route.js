@@ -1,5 +1,6 @@
 import { lookupByMobile } from '@/lib/ops-donate';
 import { json, bad, rateLimit, clientIp } from '@/lib/util';
+import { parsePhone } from '@/lib/phone';
 
 /**
  * Masked lookup — D24 (no OTP) makes throttling non-negotiable:
@@ -12,10 +13,12 @@ export async function POST(request) {
   }
   let body;
   try { body = await request.json(); } catch { return bad('Invalid JSON'); }
-  const mobile = String(body.mobile || '').replace(/\D/g, '');
-  if (!/^[0-9]{10}$/.test(mobile)) return bad('Enter a 10-digit mobile number', 422);
+  // Accept whatever form the donor typed — "+91 98400 12345", "098400 12345",
+  // "9840012345" — and normalise before looking anything up.
+  const phone = parsePhone(body.mobile, body.cc);
+  if (!phone.ok) return bad(phone.reason, 422);
   try {
-    return json({ people: await lookupByMobile(mobile) });
+    return json({ people: await lookupByMobile(phone.national, phone.cc), phone: phone.pretty });
   } catch (err) {
     console.error('lookup:', err);
     return bad('Lookup failed', 500);

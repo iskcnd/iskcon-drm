@@ -114,16 +114,37 @@ export const SYNC_OPS = {
     async run() {
       const url = process.env.ZOHO_WEBHOOK_URL;
       if (!url) throw new Error('ZOHO_WEBHOOK_URL is not set on this service');
+      // Must mirror buildPayload() in apps/donate/src/lib/zoho.js field for
+      // field. A cut-down test payload proves nothing — Zoho can accept a
+      // partial body and still reject the real one.
       const payload = {
         data: {
-          Name: { first_name: 'DRM CONNECTION TEST — please ignore' },
           Email: 'test@iskconchennai.org',
-          Amount: '1',
-          Form_Type: 'Page',
+          Address: {
+            country: 'India',
+            district_city: 'Chennai',
+            latitude: '',
+            address_line_1: 'DRM connection test',
+            state_province: 'Tamil Nadu',
+            address_line_2: '',
+            postal_code: '600020',
+            longitude: '',
+          },
           Payment_Type: process.env.ZOHO_PAYMENT_TYPE_ID || '',
+          Same_as_Payee: 'false',
+          Name: { first_name: 'DRM CONNECTION TEST — please ignore' },
+          Form_Type: 'Page',
+          would_you_like_to_receive_an_80_G: 'false',
+          Would_you_like_to_receive_prasadam_on_your_Special_Occassions: 'false',
           Seva_Type: process.env.ZOHO_DEFAULT_SEVA_TYPE_ID || '',
-          Select_Seva_Category: process.env.ZOHO_DEFAULT_CATEGORY_ID || '',
+          Sponsor_Type: 'Amount of Your Choice',
           Transaction_ID: `DRM-TEST-${Date.now()}`,
+          Phone: '+919999999999',
+          As_a_token_of_gratitude_we_wish_to_send_prasadam_Kindly_share_your_address: 'false',
+          Employee_Name: '',
+          Volunteer_Name: '',
+          Amount: '1',
+          Select_Seva_Category: process.env.ZOHO_DEFAULT_CATEGORY_ID || '',
           Date_field: new Date().toISOString().slice(0, 10),
           PTFS: 'Yes',
           Seva_Types: [],

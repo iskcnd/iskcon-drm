@@ -2,6 +2,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { I18N } from '@/lib/i18n';
 import { launchPayment, retryNextGateway } from '@/lib/launch';
+import { parsePhone } from '@/lib/phone';
 
 const fmt = (n) => '₹' + Number(n).toLocaleString('en-IN');
 
@@ -46,6 +47,7 @@ export default function DonateClient({ categories, campaigns, videoId }) {
   const [sevaDate, setSevaDate] = useState('');
   const [monthly, setMonthly] = useState(true);
   const [phone, setPhone] = useState('');
+  const [phoneInfo, setPhoneInfo] = useState(null);
   const [people, setPeople] = useState(null);
   const [personId, setPersonId] = useState(null);
   const [form, setForm] = useState({ name: '', email: '', addressLine: '', pincode: '', pan: '', whatsappOptin: true, prasadam: false });
@@ -100,22 +102,38 @@ export default function DonateClient({ categories, campaigns, videoId }) {
     return () => document.removeEventListener('keydown', onKey);
   }, [sel]);
 
+  /**
+   * Accepts the number in whatever shape the donor types it. Nothing is
+   * rejected while typing — the parser decides when it's complete, and only
+   * then do we look anyone up.
+   */
   async function lookup(v) {
     setPhone(v);
-    const digits = v.replace(/\D/g, '');
     setPeople(null); setPersonId(null);
-    if (digits.length === 10) {
-      try {
-        const r = await fetch('/api/lookup', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ mobile: digits }) });
-        const d = await r.json();
-        if (r.ok && d.people?.length) setPeople(d.people);
-      } catch { /* lookup is best-effort */ }
-    }
+
+    const parsed = parsePhone(v);
+    setPhoneInfo(parsed);
+    if (!parsed.ok) return;
+
+    try {
+      const r = await fetch('/api/lookup', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ mobile: parsed.e164 }),
+      });
+      const d = await r.json();
+      if (r.ok && d.people?.length) setPeople(d.people);
+    } catch { /* lookup is best-effort */ }
   }
 
   async function submitDonation() {
+    const parsed = parsePhone(phone);
+    if (!personId && !parsed.ok) {
+      setError(parsed.reason);
+      setStep(2);
+      return;
+    }
     setBusy(true); setError('');
-    const digits = phone.replace(/\D/g, '');
     const body = {
       categorySlug: sel.kind === 'category' ? sel.item.slug : null,
       campaignSlug: sel.kind === 'campaign' ? sel.item.slug : null,
@@ -126,7 +144,16 @@ export default function DonateClient({ categories, campaigns, videoId }) {
       personId,
       newPerson: personId
         ? (needsAddressOnly ? { addressLine: form.addressLine, pincode: form.pincode, pan: form.pan || null } : null)
-        : { name: form.name, mobile: digits, email: form.email || null, pan: form.pan || null, whatsappOptin: form.whatsappOptin, addressLine: form.addressLine, pincode: form.pincode },
+        : {
+          name: form.name,
+          mobile: parsed.national,
+          cc: parsed.cc,
+          email: form.email || null,
+          pan: form.pan || null,
+          whatsappOptin: form.whatsappOptin,
+          addressLine: form.addressLine,
+          pincode: form.pincode,
+        },
     };
     try {
       const r = await fetch('/api/donations', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
@@ -317,9 +344,21 @@ export default function DonateClient({ categories, campaigns, videoId }) {
                   <p className="emo-line">{t('phoneline')}</p>
                   <div className="field">
                     <label htmlFor="phone">{t('mobile')}</label>
-                    <input type="tel" id="phone" inputMode="numeric" maxLength={10} placeholder="98400 12345"
-                      value={phone} onChange={(e) => lookup(e.target.value)} aria-describedby="phoneHint" />
-                    <div className="hint" id="phoneHint">{t('mobilehint')}</div>
+                    {/* No maxLength: it silently truncated "+91 98400 12345"
+                        to "+918807356" and the donor never saw why it failed.
+                        inputMode="tel" keeps "+" available on phone keypads. */}
+                    <input
+                      type="tel" id="phone" inputMode="tel" autoComplete="tel"
+                      placeholder="98400 12345  ·  +91 98400 12345  ·  +1 415 555 0199"
+                      value={phone} onChange={(e) => lookup(e.target.value)}
+                      aria-describedby="phoneHint"
+                      aria-invalid={phone.length > 3 && phoneInfo && !phoneInfo.ok ? 'true' : undefined}
+                    />
+                    <div className="hint" id="phoneHint">
+                      {phoneInfo?.ok
+                        ? `✓ ${phoneInfo.pretty}`
+                        : (phone.length > 3 && phoneInfo?.reason) || t('mobilehint')}
+                    </div>
                   </div>
 
                   {people && !personId ? (

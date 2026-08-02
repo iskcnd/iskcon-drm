@@ -20,10 +20,10 @@ async function api(op, payload) {
 }
 
 const inr = (n) => '₹' + Number(n || 0).toLocaleString('en-IN', { maximumFractionDigits: 0 });
-const DONATE_BASE = 'https://donate.iskconchennai.org';
 
-export default function TeamClient({ role }) {
+export default function TeamClient({ role, donateBase }) {
   const rank = RANK[role] ?? 0;
+  const DONATE_BASE = donateBase || '';
   const [tab, setTab] = useState('staff');
   const [d, setD] = useState(null);
   const [unmapped, setUnmapped] = useState([]);
@@ -42,8 +42,9 @@ export default function TeamClient({ role }) {
   useEffect(() => { load(); }, [load]);
 
   function copyLink(code) {
+    if (!DONATE_BASE) return say('Set DONATE_BASE_URL on this service first');
     navigator.clipboard?.writeText(`${DONATE_BASE}/?ref=${code}`);
-    say('Link copied');
+    say(`Copied ${DONATE_BASE}/?ref=${code}`);
   }
 
   return (
@@ -70,6 +71,20 @@ export default function TeamClient({ role }) {
         <b>The Zoho id is what matters.</b> Employee and Volunteer are lookup fields in Zoho Creator —
         the webhook sends the id, not the name. A record without an id reaches Zoho blank.
       </div>
+
+      {DONATE_BASE ? (
+        <p className="hint">
+          Referral links point at <code>{DONATE_BASE}</code>. When the donation page moves to
+          <code> donate.iskconchennai.org</code>, update <code>DONATE_BASE_URL</code> on this
+          service and every link here follows automatically — links already shared keep working
+          only if you also keep the old domain alive.
+        </p>
+      ) : (
+        <div className="errbox">
+          <b>DONATE_BASE_URL is not set on this service.</b> Referral links can&apos;t be built
+          until it is. Set it to the donation page&apos;s current address.
+        </div>
+      )}
 
       {unmapped.length > 0 && (
         <div className="dupbox">

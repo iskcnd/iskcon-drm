@@ -9,7 +9,7 @@ import { q } from './db.js';
 
 export async function buildPayload(client, donationId) {
   const r = await client.query(
-    `SELECT d.*, p.full_name, p.email, p.mobile_number, p.pan,
+    `SELECT d.*, p.full_name, p.email, p.mobile_number, p.mobile_e164, p.pan,
             p.address_line, p.area, p.city, p.state, p.pincode,
             sc.zoho_seva_type_id  AS cat_seva_type, sc.zoho_category_id AS cat_category, sc.name AS cat_name,
             cp.zoho_seva_type_id  AS camp_seva_type, cp.zoho_category_id AS camp_category, cp.slug AS camp_slug,
@@ -59,7 +59,11 @@ export async function buildPayload(client, donationId) {
       Seva_Type: d.camp_seva_type || d.cat_seva_type || process.env.ZOHO_DEFAULT_SEVA_TYPE_ID || '',
       Sponsor_Type: 'Amount of Your Choice',
       Transaction_ID: d.txn_id || d.txn_ref || '',
-      Phone: d.mobile_number || '',
+      // Full international form. Your Zoho donation export stores phones as
+      // "+919840012345", so sending the bare national number would create
+      // records that don't match the ones already there — and would be wrong
+      // outright for overseas donors.
+      Phone: d.mobile_e164 || d.mobile_number || '',
       As_a_token_of_gratitude_we_wish_to_send_prasadam_Kindly_share_your_address: d.prasadam_optin ? 'true' : 'false',
       // Zoho record ids, resolved above. Falls back to empty rather than the
       // raw name — sending a name to a lookup field silently drops the value,
