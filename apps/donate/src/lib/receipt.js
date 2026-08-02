@@ -16,8 +16,27 @@ const MAROON = '#3B2A8C'; // template's headline blue-violet
 const RED = '#C81E5B';
 const INK = '#222222';
 
+/**
+ * Signs a receipt link. Receipt numbers are sequential and the PDF carries the
+ * donor's name, address, PAN and amount — so this token is the only thing
+ * standing between a guessed URL and someone else's donation record.
+ *
+ * It must never fall back to a default. A hardcoded fallback is a published
+ * secret: anyone could compute the token for every receipt number in the series.
+ * Failing to boot is the correct behaviour when the secret is missing.
+ *
+ * RECEIPT_SECRET is preferred so that rotating CRON_KEY does not invalidate
+ * every receipt link already sent to devotees.
+ */
 export function receiptToken(receiptNo) {
-  return hmac256(String(receiptNo), process.env.CRON_KEY || 'dev').slice(0, 16);
+  const secret = process.env.RECEIPT_SECRET || process.env.CRON_KEY;
+  if (!secret || secret.length < 16) {
+    throw new Error(
+      'RECEIPT_SECRET (or CRON_KEY) is missing or shorter than 16 characters. '
+      + 'Receipt links are signed with it; without a strong secret anyone could '
+      + 'enumerate donation receipts. Generate one with: openssl rand -base64 32');
+  }
+  return hmac256(String(receiptNo), secret).slice(0, 16);
 }
 
 const ONES = ['', 'One', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven', 'Eight', 'Nine', 'Ten', 'Eleven', 'Twelve',
