@@ -15,11 +15,22 @@ export async function buildPayload(client, donationId) {
             cp.zoho_seva_type_id  AS camp_seva_type, cp.zoho_category_id AS camp_category, cp.slug AS camp_slug,
             (SELECT gateway_txn_id FROM payment_attempt
               WHERE donation_id = d.id AND status='success'
-              ORDER BY attempt_no DESC LIMIT 1) AS txn_id
+              ORDER BY attempt_no DESC LIMIT 1) AS txn_id,
+            ze.zoho_id AS employee_zoho_id,
+            zv.zoho_id AS volunteer_zoho_id
        FROM donation d
        JOIN person p ON p.id = d.person_id
        LEFT JOIN seva_category sc ON sc.id = d.seva_category_id
        LEFT JOIN campaign cp ON cp.id = d.campaign_id
+       -- Employee_Name and Volunteer_Name are lookup fields in Zoho Creator:
+       -- they expect a record id, not the person's name. Matching is on a
+       -- whitespace-normalised name because the exports carry values like
+       -- "   Anna Daan  Counter  ".
+       LEFT JOIN zoho_employee ze
+              ON ze.match_name = lower(btrim(regexp_replace(d.collected_by, '\s+', ' ', 'g')))
+       LEFT JOIN zoho_volunteer zv
+              ON zv.match_name = lower(btrim(regexp_replace(d.volunteer_name, '\s+', ' ', 'g')))
+             AND zv.is_active
       WHERE d.id = $1`,
     [donationId]
   );
@@ -50,8 +61,12 @@ export async function buildPayload(client, donationId) {
       Transaction_ID: d.txn_id || d.txn_ref || '',
       Phone: d.mobile_number || '',
       As_a_token_of_gratitude_we_wish_to_send_prasadam_Kindly_share_your_address: d.prasadam_optin ? 'true' : 'false',
-      Employee_Name: d.collected_by || '',
-      Volunteer_Name: d.volunteer_name || '',
+      // Zoho record ids, resolved above. Falls back to empty rather than the
+      // raw name — sending a name to a lookup field silently drops the value,
+      // so an unmapped staff member should show up as blank and be caught by
+      // the v_unmapped_staff view rather than looking like it worked.
+      Employee_Name: d.employee_zoho_id || '',
+      Volunteer_Name: d.volunteer_zoho_id || '',
       Amount: String(d.amount),
       Select_Seva_Category: d.camp_category || d.cat_category || process.env.ZOHO_DEFAULT_CATEGORY_ID || '',
       Date_field: d.donated_on instanceof Date ? d.donated_on.toISOString().slice(0, 10) : String(d.donated_on),
