@@ -21,6 +21,7 @@ export async function register() {
 
   const everyMs = Math.max(Number(process.env.OUTBOX_INTERVAL_SECONDS || 60), 15) * 1000;
   const { processOutbox } = await import('./lib/zoho.js');
+  const { processNotifications } = await import('./lib/notify.js');
 
   let running = false;
   const tick = async () => {
@@ -36,6 +37,17 @@ export async function register() {
       }
     } catch (err) {
       console.error('[outbox] run failed:', err.message);
+    }
+
+    // Receipts by WhatsApp/email. Separate try: a messaging failure must not
+    // stop the Zoho sync, and vice versa.
+    try {
+      const n = await processNotifications(20);
+      if (n && !n.skipped && n.processed > 0) {
+        console.log(`[notify] processed=${n.processed} sent=${n.sent} failed=${n.failed}`);
+      }
+    } catch (err) {
+      console.error('[notify] run failed:', err.message);
     } finally {
       running = false;
     }

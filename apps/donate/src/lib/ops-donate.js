@@ -2,6 +2,7 @@ import { q, tx } from './db.js';
 import { maskName, orderRef } from './util.js';
 import { enqueueZohoWebhook } from './zoho.js';
 import { parsePhone } from './phone.js';
+import { queueReceiptNotifications } from './notify.js';
 
 /** Public actor sentinel for audit rows written by the donation page. */
 const PUBLIC_ACTOR = process.env.PUBLIC_ACTOR_ID || null;
@@ -326,6 +327,9 @@ export async function markPaid(ref, { gatewayTxnId, mode, raw }) {
     );
     if (d.rows.length) {
       await enqueueZohoWebhook(c, donation_id);
+      // Queued, never sent inline: the money is already taken by this point,
+      // so a slow messaging provider must not be able to fail the payment.
+      await queueReceiptNotifications(c, donation_id);
     }
     const receipt = d.rows.length
       ? d.rows[0].receipt_no

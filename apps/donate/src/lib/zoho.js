@@ -7,6 +7,25 @@ import { q } from './db.js';
  * come from env. ZOHO_WEBHOOK_URL carries the zapikey — env only, never in git.
  */
 
+/**
+ * Zoho's date format: "03-Aug-2026". Always a string, always Asia/Kolkata.
+ *
+ * ISO dates are rejected by Zoho's validation, and UTC is wrong regardless —
+ * a donation at 09:00 IST is 03:30 UTC the same day, but one at 02:00 IST is
+ * still the *previous* day in UTC. Getting this wrong silently backdates
+ * donations made late at night.
+ */
+export function zohoDate(value) {
+  if (!value) return '';
+  const dt = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(dt.getTime())) return '';
+  return dt
+    .toLocaleDateString('en-GB', {
+      timeZone: 'Asia/Kolkata', day: '2-digit', month: 'short', year: 'numeric',
+    })
+    .replace(/ /g, '-');
+}
+
 export async function buildPayload(client, donationId) {
   const r = await client.query(
     `SELECT d.*, p.full_name, p.email, p.mobile_number, p.mobile_e164, p.pan,
@@ -73,7 +92,10 @@ export async function buildPayload(client, donationId) {
       Volunteer_Name: d.volunteer_zoho_id || '',
       Amount: String(d.amount),
       Select_Seva_Category: d.camp_category || d.cat_category || process.env.ZOHO_DEFAULT_CATEGORY_ID || '',
-      Date_field: d.donated_on instanceof Date ? d.donated_on.toISOString().slice(0, 10) : String(d.donated_on),
+      // Zoho validates this strictly and wants "03-Aug-2026", not ISO.
+      // Also computed in Asia/Kolkata: toISOString() is UTC, so a donation
+      // after 05:30 IST would have been sent with the previous day's date.
+      Date_field: zohoDate(d.donated_on),
       PTFS: 'Yes',
       Seva_Types: [],
     },

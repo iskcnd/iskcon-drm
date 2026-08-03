@@ -123,15 +123,37 @@ export const DONATION_OPS = {
     },
   },
 
-  /** Issues a receipt number for a donation that somehow has none. */
+  /**
+   * Issues a receipt number for a paid donation that somehow has none.
+   *
+   * Refuses unless the donation is actually paid. A receipt is a statement
+   * that the temple received money — issuing one against a pending or failed
+   * payment creates a document the donor could present, and burns a number out
+   * of a series that must stay continuous and auditable.
+   */
   'don.issueReceipt': {
     cap: CAPABILITY.write,
     async run({ id }, user) {
       return tx(user.id, async (c) => {
+        const chk = await c.query(
+          'SELECT id, status, receipt_no, amount FROM donation WHERE id = $1', [id]);
+        if (!chk.rowCount) throw new Error('Donation not found');
+
+        const d = chk.rows[0];
+        if (d.receipt_no) {
+          return { receipt_no: d.receipt_no, token: receiptToken(d.receipt_no), already: true };
+        }
+        if (d.status !== 'paid') {
+          throw new Error(
+            `This donation is "${d.status}", not paid. A receipt can only be issued once the `
+            + 'payment is confirmed. If the money did arrive, mark the donation paid first — '
+            + 'check the Zoho sync tab or the gateway dashboard.');
+        }
+
         const r = await c.query(
           `UPDATE donation SET receipt_no = COALESCE(receipt_no, next_receipt_no())
-            WHERE id = $1 RETURNING receipt_no`, [id]);
-        if (!r.rowCount) throw new Error('Donation not found');
+            WHERE id = $1 AND status = 'paid' RETURNING receipt_no`, [id]);
+        if (!r.rowCount) throw new Error('Donation is no longer paid — nothing issued');
         const no = r.rows[0].receipt_no;
         return { receipt_no: no, token: receiptToken(no) };
       });

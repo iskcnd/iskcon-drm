@@ -93,16 +93,43 @@ export function renderReceiptPDF(d) {
       115, doc.y, { width: W - 75, align: 'center' })
     .text('Mobile: 6385042108  ·  E-mail: info@iskconchennai.org', { width: W - 75, align: 'center' });
 
+  // ---------------------------------------------- receipt number & date
+  // Laid out to match the printed book: the number is the largest thing in
+  // this band, top-right, because it's what a donor quotes on the phone and
+  // what staff search by. Previously it was small red text sharing a line with
+  // the date, which made it the least findable item on the page.
   let y = 135;
-  doc.roundedRect(40, y, W, 26, 4).stroke(RED);
-  doc.fillColor(RED).font('Helvetica-Bold').fontSize(11)
-    .text(`Donation Receipt No.  ${d.receipt_no}`, 52, y + 7, { continued: false });
-  const dt = d.donated_on instanceof Date ? d.donated_on : new Date(d.donated_on);
-  doc.text(`Date: ${dt.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}`,
-    40, y + 7, { width: W - 12, align: 'right' });
-  doc.fillColor('#B850A0').fontSize(8).text("DONOR'S COPY", 40, y + 30, { width: W, align: 'right' });
 
-  y += 44;
+  const numBoxW = 200;
+  const numBoxX = 40 + W - numBoxW;
+
+  doc.fillColor(RED).font('Helvetica-Bold').fontSize(10)
+    .text('Donation', numBoxX, y, { width: numBoxW * 0.42, align: 'right' });
+  doc.fillColor(INK).fontSize(9)
+    .text('Receipt No.', numBoxX, y + 12, { width: numBoxW * 0.42, align: 'right' });
+
+  // The number itself — large, black, monospaced digits so 0 and 8 can't be
+  // confused when read aloud or copied by hand.
+  doc.fillColor(INK).font('Courier-Bold').fontSize(20)
+    .text(String(d.receipt_no || ''), numBoxX + numBoxW * 0.45, y + 2,
+      { width: numBoxW * 0.55, align: 'right' });
+
+  const dt = d.donated_on instanceof Date ? d.donated_on : new Date(d.donated_on);
+  const dateBoxW = 150;
+  const dateBoxX = 40 + W - dateBoxW;
+  doc.roundedRect(dateBoxX, y + 30, dateBoxW, 24, 3).stroke(RED);
+  doc.fillColor(RED).font('Helvetica-Bold').fontSize(8)
+    .text('Date', dateBoxX, y + 25, { width: dateBoxW, align: 'center' });
+  doc.fillColor(INK).font('Helvetica-Bold').fontSize(11)
+    .text(dt.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }),
+      dateBoxX, y + 37, { width: dateBoxW, align: 'center' });
+
+  // Pink badge, as on the printed form.
+  doc.roundedRect(dateBoxX - 110, y + 30, 96, 24, 3).fill('#F3C7DE');
+  doc.fillColor('#A6246E').font('Helvetica-Bold').fontSize(9)
+    .text("DONOR'S COPY", dateBoxX - 110, y + 38, { width: 96, align: 'center' });
+
+  y += 66;
   doc.roundedRect(40, y, W, 34, 4).stroke(RED);
   doc.fillColor(RED).font('Helvetica-Bold').fontSize(9).text('Donation Amount in Rupees', 52, y - 5, { width: 200 });
   doc.fillColor(INK).font('Helvetica-Bold').fontSize(13)
