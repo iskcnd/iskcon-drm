@@ -72,20 +72,39 @@ function loadRazorpay() {
   });
 }
 
-/** Failure → ask the server for the next gateway on the cascade and launch it. */
-export async function retryNextGateway(donationId, failedGateway, hooks) {
+/**
+ * Failure → try another gateway.
+ *
+ * `gateway` forces a specific one (the donor chose it). Otherwise the server
+ * picks the next enabled option not in `tried`. Carrying `tried` is what stops
+ * a donor bouncing between the same two gateways indefinitely.
+ */
+export async function retryNextGateway(donationId, failedGateway, hooks, opts = {}) {
+  const tried = opts.tried || [failedGateway].filter(Boolean);
   const r = await fetch(`/api/donations/${donationId}/retry`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ failedGateway }),
+    body: JSON.stringify({ failedGateway, tried, gateway: opts.gateway || undefined }),
   });
   const data = await r.json();
   if (!r.ok) throw new Error(data.error || 'No fallback available');
+
+  const nextTried = tried.includes(data.gateway) ? tried : [...tried, data.gateway];
   launchPayment(data, {
     ...hooks,
-    onRazorpayFail: () => retryNextGateway(donationId, data.gateway, hooks).catch(() => {
-      window.location.assign(`/thank-you?status=failed&donation=${donationId}&gateway=${data.gateway}&final=1`);
-    }),
+    onRazorpayFail: () => retryNextGateway(donationId, data.gateway, hooks, { tried: nextTried })
+      .catch(() => {
+        window.location.assign(`/thank-you?status=failed&donation=${donationId}&gateway=${data.gateway}&final=1`);
+      }),
   });
   return data;
+}
+
+/** The options a donor can still try, for the failure screen. */
+export async function availableGateways() {
+  try {
+    const r = await fetch('/api/gateways');
+    const d = await r.json();
+    return d.gateways || [];
+  } catch { return []; }
 }

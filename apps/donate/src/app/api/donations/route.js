@@ -1,5 +1,5 @@
 import { createDonation } from '@/lib/ops-donate';
-import { buildRequest, CASCADE } from '@/lib/gateways';
+import { buildRequest, defaultGateway, isEnabled, GATEWAYS } from '@/lib/gateways';
 import { json, bad, rateLimit, clientIp } from '@/lib/util';
 
 function baseUrl(request) {
@@ -18,7 +18,17 @@ export async function POST(request) {
   if (!Number.isFinite(amount) || amount <= 0 || amount > 10_000_000) return bad('Invalid amount', 422);
   if (!body.categorySlug && !body.campaignSlug) return bad('Choose a seva', 422);
 
-  const gateway = CASCADE[0];
+  // The donor may pick a gateway; otherwise use the first enabled one.
+  const asked = String(body.gateway || '').trim().toLowerCase();
+  if (asked && !GATEWAYS[asked]) return bad('Unknown payment option', 422);
+  if (asked && !isEnabled(asked)) {
+    return bad(`${GATEWAYS[asked].label} is not available right now. Please choose another option.`, 422);
+  }
+  const gateway = asked || defaultGateway();
+  if (!gateway) {
+    return bad('No payment method is available at the moment. Please try again shortly.', 503);
+  }
+
   try {
     const r = await createDonation({
       categorySlug: body.categorySlug || null,

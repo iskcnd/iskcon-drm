@@ -48,6 +48,9 @@ export default function DonateClient({ categories, campaigns, videoId }) {
   const [monthly, setMonthly] = useState(true);
   const [phone, setPhone] = useState('');
   const [phoneInfo, setPhoneInfo] = useState(null);
+  const [gateways, setGateways] = useState([]);
+  const [gateway, setGateway] = useState('');
+  const [triedGateways, setTriedGateways] = useState([]);
   const [people, setPeople] = useState(null);
   const [personId, setPersonId] = useState(null);
   const [form, setForm] = useState({ name: '', email: '', addressLine: '', pincode: '', pan: '', whatsappOptin: true, prasadam: false });
@@ -126,6 +129,17 @@ export default function DonateClient({ categories, campaigns, videoId }) {
     } catch { /* lookup is best-effort */ }
   }
 
+  // Which payment options are actually usable. Loaded once.
+  useEffect(() => {
+    fetch('/api/gateways')
+      .then((r) => r.json())
+      .then((d) => {
+        setGateways(d.gateways || []);
+        setGateway((g) => g || d.gateways?.[0]?.id || '');
+      })
+      .catch(() => { /* the pay step shows its own message if this fails */ });
+  }, []);
+
   async function submitDonation() {
     const parsed = parsePhone(phone);
     if (!personId && !parsed.ok) {
@@ -141,6 +155,7 @@ export default function DonateClient({ categories, campaigns, videoId }) {
       sevaDate: isDatedCat ? sevaDate || null : null,
       isRecurring: isMonthlyCat && monthly,
       prasadam: form.prasadam,
+      gateway,
       personId,
       newPerson: personId
         ? (needsAddressOnly ? { addressLine: form.addressLine, pincode: form.pincode, pan: form.pan || null } : null)
@@ -164,6 +179,10 @@ export default function DonateClient({ categories, campaigns, videoId }) {
         setBusy(false);
         return;
       }
+      // Remember what's been attempted so the donor is offered something new,
+      // and so the buttons can show "already tried".
+      setTriedGateways((s) => (s.includes(data.gateway) ? s : [...s, data.gateway]));
+
       launchPayment(data, {
         onRazorpayDone: () => setBusy(false),
         onRazorpayFail: () => {
@@ -417,14 +436,42 @@ export default function DonateClient({ categories, campaigns, videoId }) {
                     {isDatedCat && sevaDate ? <div className="s-row"><span>{t('sevadateshort')}</span><span>{sevaDate}</span></div> : null}
                     <div className="s-row total"><span>{t('youroffering')}</span><span>{fmt(amount)}{isMonthlyCat && monthly ? ' ' + t('permonth') : ''}</span></div>
                   </div>
-                  <button className="gateway primary" onClick={submitDonation} disabled={busy}>
-                    <span className="gw-logo gw-payu" aria-hidden="true">PayU</span>
-                    <span><b>{t('payuname')}</b><span>{t('payusub')}</span></span>
-                  </button>
-                  <p className="failsafe">{t('failsafe')}</p>
-                  <div className="gateway" aria-disabled="true"><span className="gw-logo gw-rzp" aria-hidden="true">Rzp</span><span><b>Razorpay</b><span>{t('backup')}</span></span></div>
-                  <div className="gateway" aria-disabled="true"><span className="gw-logo gw-ezb" aria-hidden="true">Ezb</span><span><b>Easebuzz</b><span>{t('backup')}</span></span></div>
-                  <button className="btn-pay" onClick={submitDonation} disabled={busy}>
+                  {/* Real choices, driven by /api/gateways. Previously the
+                      alternatives were aria-disabled decoration, so a donor
+                      whose card failed on PayU had no way forward. */}
+                  {gateways.length > 1 && <p className="failsafe">{t('choosegateway') || 'Choose how to pay'}</p>}
+
+                  {gateways.map((g) => (
+                    <button
+                      key={g.id}
+                      type="button"
+                      className={'gateway' + (gateway === g.id ? ' primary' : '')}
+                      aria-pressed={gateway === g.id}
+                      onClick={() => setGateway(g.id)}
+                      disabled={busy}
+                    >
+                      <span className={`gw-logo gw-${g.id}`} aria-hidden="true">{g.label}</span>
+                      <span>
+                        <b>{g.label}</b>
+                        <span>
+                          {g.note}
+                          {triedGateways.includes(g.id) ? ' · already tried' : ''}
+                        </span>
+                      </span>
+                    </button>
+                  ))}
+
+                  {gateways.length === 0 && (
+                    <p className="failsafe">
+                      No payment method is available at the moment. Please try again shortly.
+                    </p>
+                  )}
+
+                  <button
+                    className="btn-pay"
+                    onClick={submitDonation}
+                    disabled={busy || !gateway || gateways.length === 0}
+                  >
                     {busy ? t('paybusy') : `🪔 ${t('offer')} ${fmt(amount)}`}
                   </button>
                   <p className="secure-line">{t('secureline')}</p>

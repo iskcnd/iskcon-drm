@@ -1,11 +1,14 @@
 import { createFallbackAttempt } from '@/lib/ops-donate';
-import { buildRequest, nextGateway } from '@/lib/gateways';
+import { buildRequest, nextGateway, isEnabled, GATEWAYS } from '@/lib/gateways';
 import { json, bad, rateLimit, clientIp } from '@/lib/util';
 
 /**
- * POST /api/donations/:id/retry  { failedGateway }
- * The client calls this when a gateway reports failure; we hand back the next
- * gateway on the cascade (D23) with a fresh order_ref.
+ * POST /api/donations/:id/retry  { failedGateway, tried?: [], gateway?: '' }
+ *
+ * Called when a gateway fails. If the donor picked a specific alternative we
+ * honour that; otherwise we pick the next enabled one they haven't tried.
+ * `tried` matters — without it a donor bounced back and forth between the same
+ * two gateways forever.
  */
 export async function POST(request, { params }) {
   const ip = clientIp(request);
@@ -15,7 +18,14 @@ export async function POST(request, { params }) {
   let body;
   try { body = await request.json(); } catch { return bad('Invalid JSON'); }
 
-  const gateway = nextGateway(body.failedGateway);
+  const asked = String(body.gateway || '').trim().toLowerCase();
+  if (asked && !GATEWAYS[asked]) return bad('Unknown payment option', 422);
+  if (asked && !isEnabled(asked)) {
+    return bad(`${GATEWAYS[asked].label} is not available right now.`, 422);
+  }
+
+  const tried = Array.isArray(body.tried) ? body.tried : [];
+  const gateway = asked || nextGateway(body.failedGateway, tried);
   if (!gateway) return bad('All payment options failed. Please try again later or contact the temple.', 409);
 
   try {
