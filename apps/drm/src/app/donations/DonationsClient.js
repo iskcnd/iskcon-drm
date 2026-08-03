@@ -27,6 +27,7 @@ const ago = (n) => new Date(Date.now() - n * 864e5).toISOString().slice(0, 10);
 const TABS = [
   ['list', 'Donations'],
   ['categories', 'Categories'],
+  ['messages', 'Messages'],
   ['reports', 'Reports'],
   ['occasions', 'Occasions'],
   ['sync', 'Zoho sync'],
@@ -62,6 +63,7 @@ export default function DonationsClient({ role }) {
 
       {tab === 'list' && <DonationList rank={rank} onErr={setErr} say={say} />}
       {tab === 'categories' && <Categories rank={rank} onErr={setErr} say={say} />}
+      {tab === 'messages' && <Messages rank={rank} onErr={setErr} say={say} />}
       {tab === 'reports' && <Reports onErr={setErr} />}
       {tab === 'occasions' && <Occasions onErr={setErr} />}
       {tab === 'sync' && <SyncHealth onErr={setErr} />}
@@ -388,6 +390,234 @@ function CategoryDialog({ cat, onClose, onSaved, onErr }) {
           <p className="hint">
             A category can be active internally (counter, imports) while hidden from the public page.
           </p>
+        </div>
+        <div className="ft">
+          <button onClick={onClose}>Cancel</button>
+          <button className="p" disabled={busy} onClick={save}>{busy ? 'Saving…' : 'Save'}</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ================================================================ messages */
+const CHANNEL_PILL = { sent: 'g', queued: 'w', failed: 'r', dead: 'r', skipped: '' };
+
+function Messages({ rank, onErr, say }) {
+  const [d, setD] = useState(null);
+  const [edit, setEdit] = useState(null);
+
+  const load = useCallback(() => api('notif.list').then(setD).catch((e) => onErr(e.message)), [onErr]);
+  useEffect(() => { load(); }, [load]);
+
+  async function toggle(c) {
+    try { await api('notif.toggle', { id: c.id, on: !c.is_active }); say('Saved'); load(); }
+    catch (e) { onErr(e.message); }
+  }
+
+  return (
+    <>
+      <p className="lede">
+        What the system sends a donor, on which channel, using which provider template.
+        Editable here — no deploy needed.
+      </p>
+
+      {d && d.channelsEnabled.length === 0 ? (
+        <div className="warnbox">
+          <b>NOTIFY_CHANNELS is empty, so nothing is being sent to donors.</b> That&apos;s the right
+          setting while Zoho is still messaging them — otherwise a donor gets two receipts for one
+          gift and reasonably thinks they were charged twice. Messages are still recorded below as
+          <b> skipped</b>. Set <code>NOTIFY_CHANNELS=whatsapp,email</code> on the donate service when
+          you take over sending.
+        </div>
+      ) : d ? (
+        <p className="hint">Channels live: <b>{d.channelsEnabled.join(', ')}</b></p>
+      ) : null}
+
+      <div className="actions" style={{ justifyContent: 'flex-start', marginBottom: 12 }}>
+        {rank >= 2 && (
+          <button className="p" onClick={() => setEdit({ channel: 'whatsapp', purpose: 'receipt', variables: [] })}>
+            + New message
+          </button>
+        )}
+        <button onClick={load}>Refresh</button>
+      </div>
+
+      {!d ? <p className="dim">Loading…</p> : (
+        <>
+          <table className="mini">
+            <thead>
+              <tr><th>Message</th><th>Channel</th><th>Template</th><th>Variables</th>
+                <th>Receipt PDF</th><th>Live</th><th /></tr>
+            </thead>
+            <tbody>
+              {d.configs.map((c) => (
+                <tr key={c.id} style={{ opacity: c.is_active ? 1 : 0.55 }}>
+                  <td><b>{c.name}</b><span className="dim"> {c.slug}</span></td>
+                  <td>{c.channel}</td>
+                  <td className="dim">{c.template || '—'}</td>
+                  <td className="dim">
+                    {(c.variables || []).map((v, i) => `${i + 1}:${v}`).join('  ') || '—'}
+                  </td>
+                  <td>{c.attach_receipt ? <span className="pill g">attached</span> : <span className="dim">no</span>}</td>
+                  <td>
+                    {rank >= 2
+                      ? <button onClick={() => toggle(c)}>{c.is_active ? 'On' : 'Off'}</button>
+                      : (c.is_active ? 'On' : 'Off')}
+                  </td>
+                  <td>{rank >= 2 && <button onClick={() => setEdit(c)}>Edit</button>}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+
+          <h3>Recent sends</h3>
+          {d.recent.length === 0
+            ? <div className="empty">Nothing sent yet.</div>
+            : (
+              <table className="mini">
+                <thead>
+                  <tr><th>#</th><th>Status</th><th>Channel</th><th>To</th><th>Donor</th>
+                    <th>Receipt</th><th>Error</th><th /></tr>
+                </thead>
+                <tbody>
+                  {d.recent.map((n) => (
+                    <tr key={n.id}>
+                      <td>{n.id}</td>
+                      <td><span className={'pill ' + (CHANNEL_PILL[n.status] || '')}>{n.status}</span></td>
+                      <td>{n.channel}</td>
+                      <td className="dim">{n.to_address}</td>
+                      <td>{n.donor || '—'}</td>
+                      <td>{n.receipt_no || '—'}</td>
+                      <td className="dim" title={n.last_error || ''}>{(n.last_error || '').slice(0, 50) || '—'}</td>
+                      <td>
+                        {rank >= 2 && n.status !== 'sent' && (
+                          <button onClick={async () => {
+                            try { await api('notif.resend', { id: n.id }); say('Re-queued'); load(); }
+                            catch (e) { onErr(e.message); }
+                          }}>Send</button>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+        </>
+      )}
+
+      {edit && (
+        <MessageDialog
+          cfg={edit} fields={d?.fields || []}
+          onClose={() => setEdit(null)}
+          onSaved={() => { setEdit(null); say('Saved'); load(); }}
+          onErr={onErr}
+        />
+      )}
+    </>
+  );
+}
+
+function MessageDialog({ cfg, fields, onClose, onSaved, onErr }) {
+  const [f, setF] = useState({ ...cfg, variables: cfg.variables || [] });
+  const [busy, setBusy] = useState(false);
+  const set = (k) => (e) => setF((s) => ({
+    ...s, [k]: e.target.type === 'checkbox' ? e.target.checked : e.target.value,
+  }));
+
+  const move = (i, dir) => setF((s) => {
+    const v = [...s.variables];
+    const j = i + dir;
+    if (j < 0 || j >= v.length) return s;
+    [v[i], v[j]] = [v[j], v[i]];
+    return { ...s, variables: v };
+  });
+
+  async function save() {
+    setBusy(true);
+    try { await api('notif.save', { data: f }); onSaved(); }
+    catch (e) { onErr(e.message); setBusy(false); }
+  }
+
+  return (
+    <div className="mask" onClick={(e) => e.target === e.currentTarget && onClose()}>
+      <div className="dlg">
+        <h3>{cfg.id ? `Edit ${cfg.name}` : 'New message'}</h3>
+        <div className="bd">
+          <div className="g2">
+            <div className="fg"><label>Name</label><input value={f.name || ''} onChange={set('name')} /></div>
+            <div className="fg"><label>Channel</label>
+              <select value={f.channel} onChange={set('channel')}>
+                <option value="whatsapp">WhatsApp</option>
+                <option value="email">Email</option>
+              </select>
+            </div>
+          </div>
+
+          {f.channel === 'whatsapp' ? (
+            <>
+              <div className="fg">
+                <label>Gallabox template name</label>
+                <input value={f.template || ''} onChange={set('template')} placeholder="receipt_new_format_test" />
+              </div>
+              <p className="hint">
+                Must match the approved template in Gallabox exactly. The variables below fill its
+                positional <code>bodyValues</code> — position 1 is the first <code>{'{{1}}'}</code>.
+              </p>
+            </>
+          ) : (
+            <>
+              <div className="fg"><label>Subject</label>
+                <input value={f.subject || ''} onChange={set('subject')} placeholder="Your ISKCON Chennai receipt {{receipt_no}}" /></div>
+              <div className="fg"><label>Body</label>
+                <textarea rows={5} value={f.body || ''} onChange={set('body')}
+                  placeholder="Hare Krishna {{donor_name}}, thank you for your offering of {{amount}}…" /></div>
+              <p className="hint">Use <code>{'{{field}}'}</code> anywhere in the subject or body.</p>
+            </>
+          )}
+
+          <h3>Variables {f.channel === 'whatsapp' ? '(order matters)' : ''}</h3>
+          {f.variables.length === 0 && <p className="hint">None yet — add from the list below.</p>}
+          <table className="mini">
+            <tbody>
+              {f.variables.map((v, i) => (
+                <tr key={`${v}-${i}`}>
+                  <td style={{ width: 30 }}><b>{i + 1}</b></td>
+                  <td>{v}<span className="dim"> {(fields.find((x) => x[0] === v) || [])[1]}</span></td>
+                  <td style={{ width: 140 }}>
+                    <button onClick={() => move(i, -1)} disabled={i === 0}>↑</button>{' '}
+                    <button onClick={() => move(i, 1)} disabled={i === f.variables.length - 1}>↓</button>{' '}
+                    <button onClick={() => setF((s) => ({ ...s, variables: s.variables.filter((_, j) => j !== i) }))}>×</button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+
+          <div className="fg">
+            <label>Add a field</label>
+            <select
+              value=""
+              onChange={(e) => {
+                if (!e.target.value) return;
+                setF((s) => ({ ...s, variables: [...s.variables, e.target.value] }));
+              }}
+            >
+              <option value="">— choose —</option>
+              {fields.map(([k, label]) => <option key={k} value={k}>{k} — {label}</option>)}
+            </select>
+          </div>
+
+          <div className="tagpick">
+            <label><input type="checkbox" checked={!!f.attach_receipt} onChange={set('attach_receipt')} /> Attach the receipt PDF</label>
+            <label><input type="checkbox" checked={!!f.is_active} onChange={set('is_active')} /> Live</label>
+          </div>
+          <p className="hint">
+            A message only goes out when it is Live <b>and</b> its channel is in
+            <code> NOTIFY_CHANNELS</code>. Otherwise it&apos;s recorded as skipped.
+          </p>
+
+          <div className="fg"><label>Notes</label><input value={f.notes || ''} onChange={set('notes')} /></div>
         </div>
         <div className="ft">
           <button onClick={onClose}>Cancel</button>
