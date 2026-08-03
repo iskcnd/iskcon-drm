@@ -77,6 +77,7 @@ export default function DonateClient({ categories, campaigns, videoId }) {
   const presets = useMemo(() => (sel ? (sel.item.presets || []) : []), [sel]);
   const isMonthlyCat = sel?.kind === 'category' && sel.item.kind === 'monthly';
   const isDatedCat = sel?.kind === 'category' && sel.item.kind === 'dated';
+  const minAmount = sel?.kind === 'category' ? Number(sel.item.min_amount) || 0 : 0;
 
   function openSheet(kind, item) {
     lastFocus.current = document.activeElement;
@@ -129,15 +130,31 @@ export default function DonateClient({ categories, campaigns, videoId }) {
     } catch { /* lookup is best-effort */ }
   }
 
-  // Which payment options are actually usable. Loaded once.
+  /**
+   * Which payment options to offer.
+   *
+   * If this fails — endpoint not deployed, network blip, anything — fall back
+   * to PayU rather than leaving the donor with no way to pay. A config lookup
+   * must never be able to block a donation; the server validates the choice
+   * anyway, so the worst case is one clear error instead of a dead button.
+   */
   useEffect(() => {
+    const FALLBACK = [{ id: 'payu', label: 'PayU', note: 'Cards, UPI, net banking' }];
+    let alive = true;
     fetch('/api/gateways')
-      .then((r) => r.json())
+      .then((r) => (r.ok ? r.json() : Promise.reject(new Error(String(r.status)))))
       .then((d) => {
-        setGateways(d.gateways || []);
-        setGateway((g) => g || d.gateways?.[0]?.id || '');
+        if (!alive) return;
+        const list = d.gateways?.length ? d.gateways : FALLBACK;
+        setGateways(list);
+        setGateway((g) => g || list[0].id);
       })
-      .catch(() => { /* the pay step shows its own message if this fails */ });
+      .catch(() => {
+        if (!alive) return;
+        setGateways(FALLBACK);
+        setGateway((g) => g || FALLBACK[0].id);
+      });
+    return () => { alive = false; };
   }, []);
 
   async function submitDonation() {
@@ -354,12 +371,35 @@ export default function DonateClient({ categories, campaigns, videoId }) {
                       <label htmlFor="monthlyChk">{t('monthlytxt')}</label>
                     </div>
                   ) : null}
-                  <button className="btn-pay" onClick={() => { setError(''); setStep(2); }}>{t('continue')}</button>
+                  <button type="button" className="btn-pay" onClick={() => { setError(''); setStep(2); }}>{t('continue')}</button>
                 </div>
               ) : null}
 
               {step === 2 ? (
                 <div>
+                  {/* Donors often reconsider the amount once they see the form.
+                      Making them go back a step to change it loses some of them. */}
+                  <div className="field amount-inline">
+                    <label htmlFor="amt2">{t('youroffering')}</label>
+                    <div className="amount-row">
+                      <span className="rupee" aria-hidden="true">₹</span>
+                      <input
+                        id="amt2" type="number" inputMode="numeric" min={minAmount || 1}
+                        value={amount || ''}
+                        onChange={(e) => {
+                          const v = Math.max(0, Math.round(Number(e.target.value) || 0));
+                          setCustom(String(v));
+                          setAmount(v);
+                        }}
+                      />
+                    </div>
+                    {minAmount && amount && amount < minAmount ? (
+                      <div className="hint" style={{ color: '#a33' }}>
+                        Minimum for this seva is {fmt(minAmount)}
+                      </div>
+                    ) : null}
+                  </div>
+
                   <p className="emo-line">{t('phoneline')}</p>
                   <div className="field">
                     <label htmlFor="phone">{t('mobile')}</label>
@@ -434,7 +474,7 @@ export default function DonateClient({ categories, campaigns, videoId }) {
                     </div>
                   ) : null}
 
-                  <button className="btn-pay" onClick={() => { setError(''); setStep(3); }}>{t('topay')}</button>
+                  <button type="button" className="btn-pay" onClick={() => { setError(''); setStep(3); }}>{t('topay')}</button>
                 </div>
               ) : null}
 
@@ -470,16 +510,12 @@ export default function DonateClient({ categories, campaigns, videoId }) {
                     </button>
                   ))}
 
-                  {gateways.length === 0 && (
-                    <p className="failsafe">
-                      No payment method is available at the moment. Please try again shortly.
-                    </p>
-                  )}
 
                   <button
+                    type="button"
                     className="btn-pay"
                     onClick={submitDonation}
-                    disabled={busy || !gateway || gateways.length === 0}
+                    disabled={busy}
                   >
                     {busy ? t('paybusy') : `🪔 ${t('offer')} ${fmt(amount)}`}
                   </button>

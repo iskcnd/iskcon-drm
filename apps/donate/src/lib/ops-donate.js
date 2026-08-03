@@ -235,6 +235,29 @@ export async function createDonation(input) {
 }
 
 /** Next attempt on the cascade after a gateway failure. */
+/**
+ * Last-resort record of a payment the gateway confirmed but we failed to
+ * process. Written outside any transaction that might itself fail, and
+ * deliberately dependency-free: if this can't be stored, the money is only in
+ * the gateway's records and someone has to find it by hand.
+ */
+export async function recordUnreconciled(gateway, payload, error) {
+  await q(
+    `INSERT INTO unreconciled_payment (gateway, order_ref, gateway_txn_id, amount, raw, error)
+     VALUES ($1,$2,$3,$4,$5,$6)
+     ON CONFLICT (gateway, gateway_txn_id) DO UPDATE
+       SET error = EXCLUDED.error, seen_count = unreconciled_payment.seen_count + 1`,
+    [
+      gateway,
+      payload.txnid || payload.order_ref || null,
+      payload.mihpayid || payload.easepayid || payload.razorpay_payment_id || null,
+      Number(payload.amount) || null,
+      JSON.stringify(payload),
+      String(error).slice(0, 1000),
+    ]
+  );
+}
+
 export async function createFallbackAttempt(donationId, gateway) {
   return tx(async (c) => {
     const d = await c.query(
