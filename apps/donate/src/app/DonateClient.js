@@ -387,7 +387,16 @@ export default function DonateClient({ categories, campaigns, videoId }) {
                       {people.map((p) => (
                         <button key={p.person_id} className="mc-person" onClick={() => { setPersonId(p.person_id); setError(''); setStep(3); }}>
                           <span className="av" aria-hidden="true">🙏</span>
-                          <span><b>{p.mask}</b><span>{p.area}</span></span>
+                          <span>
+                            <b>{p.mask}</b>
+                            <span>
+                              {/* Something to tell two similar entries apart.
+                                  Area alone is often blank; the last offering
+                                  is what a returning donor actually recognises. */}
+                              {[p.area, p.lastGift && `last offered ${p.lastGift}`]
+                                .filter(Boolean).join(' · ')}
+                            </span>
+                          </span>
                           <span className="go" aria-hidden="true">→</span>
                         </button>
                       ))}

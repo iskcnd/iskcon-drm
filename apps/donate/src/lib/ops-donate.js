@@ -33,23 +33,46 @@ export async function getPageContent() {
  * D13/D24: one mobile → possibly many people. Returns ONLY masked name + area,
  * keyed by opaque person id. Nothing else ever leaves this endpoint.
  */
+/** "  Ramesh   Kumar " and "ramesh kumar" are the same person. */
+export const normName = (v) => String(v || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+
 export async function lookupByMobile(national, cc = '+91') {
   // Match on the full international form so a +1 and a +91 number that happen
   // to share national digits are never confused. alt_mobile counts too — a
   // devotee may have given the temple a second number.
   const e164 = `${cc}${national}`;
   const r = await q(
-    `SELECT id, display_name, area, city
-       FROM person
-      WHERE is_active AND (mobile_e164 = $1 OR alt_mobile_e164 = $1)
-      ORDER BY created_at
-      LIMIT 6`,
+    `SELECT p.id, p.display_name, p.area, p.city, p.created_at,
+            (SELECT max(d.donated_on) FROM donation d WHERE d.person_id = p.id) AS last_gift
+       FROM person p
+      WHERE p.is_active AND (p.mobile_e164 = $1 OR p.alt_mobile_e164 = $1)
+      ORDER BY p.created_at
+      LIMIT 12`,
     [e164]
   );
-  return r.rows.map((p) => ({
+
+  // Collapse records that are the same person recorded twice. Two identical
+  // masked names on one number are indistinguishable to the donor — offering
+  // both guarantees a wrong pick and a third duplicate next time. The oldest
+  // record wins, so history stays attached to one id.
+  const byName = new Map();
+  for (const p of r.rows) {
+    const key = normName(p.display_name);
+    const seen = byName.get(key);
+    if (!seen) { byName.set(key, p); continue; }
+    // Prefer whichever has actually donated; otherwise keep the earlier row.
+    if (p.last_gift && (!seen.last_gift || p.last_gift > seen.last_gift)) byName.set(key, p);
+  }
+
+  return [...byName.values()].slice(0, 6).map((p) => ({
     person_id: p.id,
     mask: maskName(p.display_name),
     area: [p.area, p.city].filter(Boolean).join(', '),
+    // A hint so two different people with similar names are still tellable
+    // apart, without revealing anything to someone guessing phone numbers.
+    lastGift: p.last_gift
+      ? new Date(p.last_gift).toLocaleDateString('en-IN', { month: 'short', year: 'numeric' })
+      : null,
   }));
 }
 
@@ -102,9 +125,39 @@ export async function createDonation(input) {
       const phone = parsePhone(newPerson.mobile, newPerson.cc);
       if (!phone.ok) throw Object.assign(new Error(phone.reason), { status: 422 });
 
-      const dupe = await c.query(
-        `SELECT count(*)::int AS n FROM person WHERE mobile_e164 = $1`, [phone.e164]);
-      const shared = dupe.rows[0].n > 0;
+      // Same number AND same name is the same devotee — reuse the record.
+      // D14 says a *different* name on a shared number is a different person;
+      // it never meant the same person should be duplicated on every visit.
+      // Without this, a returning donor who retypes their details instead of
+      // tapping their name gets a second record, and the picker then shows two
+      // identical options they cannot choose between.
+      const existing = await c.query(
+        `SELECT id, full_name FROM person
+          WHERE is_active AND (mobile_e164 = $1 OR alt_mobile_e164 = $1)`,
+        [phone.e164]);
+
+      const match = existing.rows.find(
+        (p) => normName(p.full_name) === normName(newPerson.name));
+
+      if (match) {
+        pid = match.id;
+        // Fill in anything the donor has now given that we didn't have before.
+        // COALESCE means a blank field never erases something already known.
+        await c.query(
+          `UPDATE person
+              SET email        = COALESCE(email, $2),
+                  pan          = COALESCE(pan, $3),
+                  address_line = COALESCE(address_line, $4),
+                  pincode      = COALESCE(pincode, $5),
+                  whatsapp_optin = whatsapp_optin OR $6
+            WHERE id = $1`,
+          [pid, newPerson.email || null,
+            newPerson.pan ? newPerson.pan.toUpperCase() : null,
+            newPerson.addressLine || null, newPerson.pincode || null,
+            !!newPerson.whatsappOptin]);
+      } else {
+
+      const shared = existing.rows.length > 0;
       const ins = await c.query(
         `INSERT INTO person (full_name, mobile_cc, mobile_number, email, pan, whatsapp_optin,
                              address_line, area, city, state, pincode,
@@ -119,7 +172,8 @@ export async function createDonation(input) {
           shared, shared ? 'donation page: new name on a mobile number already in records (D14)' : null,
         ]
       );
-      pid = ins.rows[0].id;
+        pid = ins.rows[0].id;
+      }
     } else {
       const chk = await c.query(`SELECT id FROM person WHERE id=$1 AND is_active`, [pid]);
       if (!chk.rows.length) throw Object.assign(new Error('Person not found'), { status: 404 });
