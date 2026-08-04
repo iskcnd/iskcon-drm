@@ -4,17 +4,48 @@ import { q } from './db.js';
 import { hmac256 } from './util.js';
 
 /**
- * Donation receipt PDF, following the official ISKCON Chennai receipt format
- * (ISKCON_Receipt_template.pdf). Compliance points baked in:
- *  - The receipt is an ACKNOWLEDGEMENT only, not for claiming 80G deduction.
- *  - Form 10BE is the tax certificate, issued per Income-tax Act timelines.
- *  - 80G Unique Regn. No. AAATI0017PF20219.
- * Rendered on demand from the database — no files stored.
+ * Donation receipt PDF.
+ *
+ * The official printed form (ISKCON_Receipt_template.pdf, CorelDRAW, 2023) IS
+ * the document. We do not redraw it — the artwork, wording, T&C and 80G
+ * registration text are laid down as a full-page background and only the
+ * donor's values are typed on top, exactly as a clerk fills the paper book.
+ * When the temple revises the form, replace public/receipt-template.jpg and
+ * adjust FIELDS below; nothing else changes.
+ *
+ * Coordinates are in PDF points on the template's own Letter page (612x792),
+ * measured off the artwork rather than eyeballed. Rendered on demand from the
+ * database — no files stored.
  */
 
-const MAROON = '#3B2A8C'; // template's headline blue-violet
-const RED = '#C81E5B';
-const INK = '#222222';
+const TEMPLATE = 'receipt-template.jpg';
+const PAGE = { w: 612, h: 792 };
+
+const INK = '#1A1A1A';
+const FIELD_FILL = '#EDECF6'; // the form's own pale lavender field colour
+const FIELD_LINE = '#EC4979'; // the form's own pink rule colour
+
+/**
+ * Field geometry, in points, taken from the template artwork.
+ * `rule` values are the printed underlines in the Donor Details panel; text
+ * sits just above its rule, the way handwriting does.
+ */
+const F = {
+  receiptNo: { x: 452, y: 54, w: 92, h: 26 },
+  date: { x: 466.6, y: 92.2, w: 128.2, h: 30.2 },
+  amountWords: { x: 58, y: 133.9, w: 400, h: 31.7 },
+  amountFigure: { x: 494, y: 133.9, w: 96, h: 31.7 },   // right of the pink Rs. badge
+  donorValueX: 95,                                       // clears the longest printed label
+  donorValueW: 241,
+  rules: {
+    name: 200.5, addr1: 219.2, addr2: 238.0, addr3: 256.5,
+    pin: 275.2, pan: 293.8, mobile: 312.5, email: 331.2,
+  },
+  mode: { x: 355, y: 174.2, w: 232, h: 34.6 },
+  payment: { x: 355, y: 217.4, w: 232, h: 33.1 },
+  purpose: { x: 355, y: 260.6, w: 232, h: 33.1 },
+  issuedBy: { x: 473.8, y: 305.3, w: 121, h: 31.7 },
+};
 
 /**
  * Signs a receipt link. Receipt numbers are sequential and the PDF carries the
@@ -75,132 +106,120 @@ export async function fetchReceiptData(receiptNo) {
   return r.rows[0] || null;
 }
 
+
+/**
+ * Type the donation onto the official form.
+ *
+ * Returns a PDFKit document that has already been ended; the caller collects
+ * its chunks. Nothing here draws form furniture — every line, box and word of
+ * boilerplate comes from the template image.
+ */
 export function renderReceiptPDF(d) {
-  const doc = new PDFDocument({ size: 'A4', margins: { top: 36, left: 40, right: 40, bottom: 36 } });
-  const W = doc.page.width - 80;
+  const doc = new PDFDocument({ size: [PAGE.w, PAGE.h], margin: 0 });
+
+  // The form itself. Without it there is no receipt, so this is not optional
+  // and not wrapped in a try — a missing template must fail loudly rather than
+  // produce a page of floating text with no letterhead or T&C.
+  doc.image(path.join(process.cwd(), 'public', TEMPLATE), 0, 0,
+    { width: PAGE.w, height: PAGE.h });
 
   /**
-   * A caption that sits on a box's top edge. The border is stroked first, so
-   * without an opaque patch behind it the line runs straight through the
-   * words — on the printed form the border breaks around the label.
+   * Largest size at or below `size` that fits `text` in `w`, down to `min`.
+   *
+   * A receipt is a legal acknowledgement: a truncated name or a clipped amount
+   * makes it wrong, not just ugly. Long Tamil names and lakh-scale amounts in
+   * words both overrun the printed boxes, so shrink rather than clip.
    */
-  const cap = (text, x, yy, o = {}) => {
-    doc.font('Helvetica-Bold').fontSize(o.size || 9);
-    const w = doc.widthOfString(text) + 8;
-    const left = o.width ? x + (o.width - w) / 2 : x - 4;
-    doc.rect(left, yy - 1, w, doc.currentLineHeight() + 2).fill('#FFFFFF');
-    doc.fillColor(o.color || RED).text(text, left + 4, yy, { lineBreak: false });
+  const fit = (text, w, size, font, min = 6) => {
+    let s = size;
+    doc.font(font);
+    while (s > min) {
+      doc.fontSize(s);
+      if (doc.widthOfString(String(text)) <= w) break;
+      s -= 0.25;
+    }
+    return s;
   };
 
-  try {
-    doc.image(path.join(process.cwd(), 'public', 'logo.png'), 40, 40, { width: 64 });
-  } catch { /* logo optional */ }
+  /** Text sitting on one of the printed underlines in the Donor Details panel. */
+  const onRule = (text, rule, size = 10, x = F.donorValueX, w = F.donorValueW) => {
+    const t = text == null ? '' : String(text);
+    if (!t) return;
+    const s = fit(t, w, size, 'Helvetica');
+    doc.font('Helvetica').fontSize(s).fillColor(INK)
+      .text(t, x, rule - s - 1.5, { width: w, lineBreak: false });
+  };
 
-  doc.fillColor(MAROON).font('Helvetica-Bold').fontSize(15)
-    .text('International Society for Krishna Consciousness (ISKCON)', 115, 44, { width: W - 75, align: 'center' });
-  doc.fontSize(9.5).font('Helvetica')
-    .text('Founder-Acharya: His Divine Grace A. C. Bhaktivedanta Swami Prabhupada', { width: W - 75, align: 'center' });
+  /** Text inside one of the pale lavender boxes, vertically centred. */
+  const inBox = (text, box, size = 10, font = 'Helvetica', align = 'left') => {
+    const t = text == null ? '' : String(text);
+    if (!t) return;
+    const s = fit(t, box.w, size, font);
+    doc.font(font).fontSize(s).fillColor(INK)
+      .text(t, box.x, box.y + (box.h - s) / 2 - 1, { width: box.w, align, lineBreak: false });
+  };
 
-  doc.moveDown(0.4).fontSize(9).fillColor(INK)
-    .text('Branch: Hare Krishna Land, Off ECR, Bhaktivedanta Swami Rd., Akkarai, Sholinghanallur, Chennai - 600119',
-      115, doc.y, { width: W - 75, align: 'center' })
-    .text('Mobile: 6385042108  ·  E-mail: info@iskconchennai.org', { width: W - 75, align: 'center' });
+  // ------------------------------------------------------------ receipt no.
+  // The printed book carries its own serial (0058 31 on the artwork). A digital
+  // receipt has to show OUR number, so the pre-printed one is covered by a
+  // field box drawn in the form's own colours — it reads as part of the design
+  // rather than as a patch, which a white rectangle over the watermark would.
+  const rn = F.receiptNo;
+  doc.roundedRect(rn.x, rn.y, rn.w, rn.h, 3).fillAndStroke(FIELD_FILL, FIELD_LINE);
+  doc.font('Helvetica-Bold').fontSize(15).fillColor(INK)
+    .text(String(d.receipt_no ?? ''), rn.x, rn.y + (rn.h - 15) / 2 - 1,
+      { width: rn.w, align: 'center', lineBreak: false });
 
-  // ---------------------------------------------- receipt number & date
-  // Laid out to match the printed book: the number is the largest thing in
-  // this band, top-right, because it's what a donor quotes on the phone and
-  // what staff search by. Previously it was small red text sharing a line with
-  // the date, which made it the least findable item on the page.
-  let y = 135;
-
-  const numBoxW = 200;
-  const numBoxX = 40 + W - numBoxW;
-
-  doc.fillColor(RED).font('Helvetica-Bold').fontSize(10)
-    .text('Donation', numBoxX, y, { width: numBoxW * 0.42, align: 'right' });
-  doc.fillColor(INK).fontSize(9)
-    .text('Receipt No.', numBoxX, y + 12, { width: numBoxW * 0.42, align: 'right' });
-
-  // The number itself — large, black, monospaced digits so 0 and 8 can't be
-  // confused when read aloud or copied by hand.
-  doc.fillColor(INK).font('Courier-Bold').fontSize(20)
-    .text(String(d.receipt_no || ''), numBoxX + numBoxW * 0.45, y + 2,
-      { width: numBoxW * 0.55, align: 'right' });
-
+  // ------------------------------------------------------------------ date
   const dt = d.donated_on instanceof Date ? d.donated_on : new Date(d.donated_on);
-  const dateBoxW = 150;
-  const dateBoxX = 40 + W - dateBoxW;
-  doc.roundedRect(dateBoxX, y + 30, dateBoxW, 24, 3).stroke(RED);
-  cap('Date', dateBoxX, y + 25, { width: dateBoxW, size: 8 });
-  doc.fillColor(INK).font('Helvetica-Bold').fontSize(11)
-    .text(dt.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }),
-      dateBoxX, y + 37, { width: dateBoxW, align: 'center' });
+  inBox(dt.toLocaleDateString('en-GB',
+    { timeZone: 'Asia/Kolkata', day: '2-digit', month: 'short', year: 'numeric' }).replace(/ /g, '-'),
+  F.date, 11, 'Helvetica-Bold', 'center');
 
-  // Pink badge, as on the printed form.
-  doc.roundedRect(dateBoxX - 110, y + 30, 96, 24, 3).fill('#F3C7DE');
-  doc.fillColor('#A6246E').font('Helvetica-Bold').fontSize(9)
-    .text("DONOR'S COPY", dateBoxX - 110, y + 38, { width: 96, align: 'center' });
+  // ---------------------------------------------------------------- amount
+  // Words on the left of the band, figures after the printed Rs. badge —
+  // the same two places a clerk writes them.
+  const amount = Number(d.amount || 0);
+  inBox(`Rupees ${amountInWords(amount)} only`, F.amountWords, 11, 'Helvetica-Bold');
+  inBox(`${amount.toLocaleString('en-IN')}/-`, F.amountFigure, 13, 'Helvetica-Bold');
 
-  y += 66;
-  doc.roundedRect(40, y, W, 34, 4).stroke(RED);
-  cap('Donation Amount in Rupees', 56, y - 5);
-  doc.fillColor(INK).font('Helvetica-Bold').fontSize(13)
-    .text(`Rs. ${Number(d.amount).toLocaleString('en-IN')}/-   (Rupees ${amountInWords(d.amount)} only)`, 52, y + 10);
+  // --------------------------------------------------------- donor details
+  onRule(d.full_name, F.rules.name, 10);
 
-  y += 50;
-  const colW = W / 2 - 8;
-  doc.roundedRect(40, y, colW, 150, 4).stroke(RED);
-  cap('Donor Details (T&C below for 80G/10BE)', 56, y - 5);
-  const addr = [d.address_line, d.area, d.city, d.state].filter(Boolean).join(', ');
-  doc.fillColor(INK).font('Helvetica').fontSize(9.5);
-  const L = (label, val, yy) => {
-    doc.font('Helvetica-Bold').text(label, 52, yy, { width: 60 });
-    doc.font('Helvetica').text(val || '—', 112, yy, { width: colW - 84 });
-    return doc.y + 4;
-  };
-  let ly = y + 12;
-  ly = L('Name', d.full_name, ly);
-  ly = L('Address', addr, ly);
-  ly = L('PIN', d.pincode, ly);
-  ly = L('PAN', d.pan, ly);
-  ly = L('Mobile', d.mobile_e164, ly);
-  L('E-mail', d.email, ly);
+  // The form gives the address three ruled lines. Break on what is there
+  // rather than wrapping blindly, so "Chennai, Tamil Nadu" stays together.
+  const addrParts = [d.address_line, d.area, [d.city, d.state].filter(Boolean).join(', ')]
+    .map((v) => (v || '').trim()).filter(Boolean);
+  const addrLines = [];
+  doc.font('Helvetica').fontSize(9.5);
+  for (const part of addrParts) {
+    const last = addrLines[addrLines.length - 1];
+    if (last && doc.widthOfString(`${last}, ${part}`) <= F.donorValueW) {
+      addrLines[addrLines.length - 1] = `${last}, ${part}`;
+    } else {
+      addrLines.push(part);
+    }
+  }
+  onRule(addrLines[0], F.rules.addr1, 9.5);
+  onRule(addrLines[1], F.rules.addr2, 9.5);
+  onRule(addrLines.slice(2).join(', '), F.rules.addr3, 9.5);
 
-  const rx = 40 + colW + 16;
-  const R = (label, val, yy, h = 40) => {
-    doc.roundedRect(rx, yy, colW, h, 4).stroke(RED);
-    cap(label, rx + 14, yy - 5);
-    doc.fillColor(INK).font('Helvetica').fontSize(9.5).text(val || '—', rx + 10, yy + 10, { width: colW - 20 });
-    return yy + h + 14;
-  };
-  let ry = y;
-  ry = R('Mode of Payment', d.payment_mode === 'upi' ? 'Online / UPI' : 'Online', ry, 34);
-  ry = R('Payment Details (Transaction)', `${(d.gateway || '').toUpperCase()} · ${d.txn_ref || ''}`, ry, 40);
-  R('Purpose of Donation', d.purpose, ry, 40);
+  onRule(d.pincode, F.rules.pin, 10);
+  onRule(d.pan, F.rules.pan, 10);
+  onRule(d.mobile_e164, F.rules.mobile, 10);
+  onRule(d.email, F.rules.email, 9.5);
 
-  y += 168;
-  doc.roundedRect(40, y, W, 30, 4).fillAndStroke('#FDF6D8', '#C9A227');
-  doc.fillColor(INK).fontSize(7.5).font('Helvetica')
-    .text('Registered Office: Hare Krishna Land, Juhu, Mumbai - 400 049. Registered under Maharashtra Public Trust Act 1950, Regn. No.: F-2179 (Bom).', 50, y + 6, { width: W - 20, align: 'center' })
-    .text('Unique Regn. No. (80G): AAATI0017PF20219', { width: W - 20, align: 'center' });
+  // -------------------------------------------------------- right-hand column
+  inBox(d.payment_mode === 'upi' ? 'Online / UPI' : 'Online', F.mode, 10);
+  inBox([(d.gateway || '').toUpperCase(), d.txn_ref].filter(Boolean).join(' · '), F.payment, 8.5);
+  inBox(d.purpose, F.purpose, 9.5);
 
-  y += 44;
-  doc.fillColor(INK).font('Helvetica-Bold').fontSize(9).text('Terms and Conditions (T&C):', 40, y);
-  doc.font('Helvetica').fontSize(8).moveDown(0.3);
-  [
-    'This donation receipt is an acknowledgement only and not for the purpose of claiming 80G deduction.',
-    'Form No. 10BE (certificate of donation under section 80G) will be issued as per the Income-tax Act, 1961 — generally by 31st May of the following financial year.',
-    'Full legal name and address with PIN are required for all donations. PAN is compulsory to obtain Form No. 10BE.',
-    'PAN is compulsory for all donations of Rs. 50,000/- or more. Form 10BE is not available for cash donations.',
-    '10BE is available in PDF only — please ensure your WhatsApp number and e-mail are correct.',
-    'In case of any error in this receipt, contact the receipt issuing centre for correction.',
-  ].forEach((t) => doc.text(`•  ${t}`, { width: W, lineGap: 1.5 }));
-
-  doc.moveDown(1);
-  doc.font('Helvetica-Bold').fontSize(9.5).fillColor(MAROON)
-    .text('HARE KRISHNA HARE KRISHNA KRISHNA KRISHNA HARE HARE', { width: W, align: 'center' })
-    .text('HARE RAMA HARE RAMA RAMA RAMA HARE HARE', { width: W, align: 'center' });
-  doc.font('Helvetica').fontSize(8.5).fillColor(INK).text('and be happy.', { width: W, align: 'center' });
+  // The paper form has a line for the representative's signature. Nobody signs
+  // a receipt that was issued by a payment gateway at 2am, so say so plainly
+  // instead of leaving a blank that looks like an unfinished document.
+  doc.font('Helvetica-Oblique').fontSize(7).fillColor('#555555')
+    .text('Digitally issued — no signature required', F.issuedBy.x, F.issuedBy.y + 11,
+      { width: F.issuedBy.w, align: 'center', lineBreak: false });
 
   doc.end();
   return doc;

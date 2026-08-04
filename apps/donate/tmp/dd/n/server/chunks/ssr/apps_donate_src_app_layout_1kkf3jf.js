@@ -1,3 +1,0 @@
-module.exports=[60213,a=>{"use strict";var b=a.i(7997);a.s(["default",0,function({children:a}){return(0,b.jsx)("html",{lang:"en",children:(0,b.jsx)("body",{style:{margin:0,fontFamily:"system-ui, sans-serif"},children:a})})},"metadata",0,{title:"Offer Seva | ISKCON Chennai",description:"Support ISKCON Chennai — annadanam, deity seva, nitya seva and festival campaigns. 80G receipts issued instantly."}])},21735,a=>{a.n(a.i(60213))}];
-
-//# sourceMappingURL=apps_donate_src_app_layout_1kkf3jf.js.map
