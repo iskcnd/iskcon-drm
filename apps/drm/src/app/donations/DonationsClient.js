@@ -422,17 +422,14 @@ function Messages({ rank, onErr, say }) {
         Editable here — no deploy needed.
       </p>
 
-      {d && d.channelsEnabled.length === 0 ? (
+      {d && d.configs.every((c) => !c.is_active) && (
         <div className="warnbox">
-          <b>NOTIFY_CHANNELS is empty, so nothing is being sent to donors.</b> That&apos;s the right
-          setting while Zoho is still messaging them — otherwise a donor gets two receipts for one
-          gift and reasonably thinks they were charged twice. Messages are still recorded below as
-          <b> skipped</b>. Set <code>NOTIFY_CHANNELS=whatsapp,email</code> on the donate service when
-          you take over sending.
+          <b>Nothing is switched on, so no donor is being messaged.</b> That&apos;s the right setting
+          while Zoho still sends receipts — otherwise a donor gets two for one gift and reasonably
+          thinks they were charged twice. Messages are still recorded below as <b>skipped</b>.
+          Switch one on when you take over sending.
         </div>
-      ) : d ? (
-        <p className="hint">Channels live: <b>{d.channelsEnabled.join(', ')}</b></p>
-      ) : null}
+      )}
 
       <div className="actions" style={{ justifyContent: 'flex-start', marginBottom: 12 }}>
         {rank >= 2 && (
@@ -447,19 +444,19 @@ function Messages({ rank, onErr, say }) {
         <>
           <table className="mini">
             <thead>
-              <tr><th>Message</th><th>Channel</th><th>Template</th><th>Variables</th>
-                <th>Receipt PDF</th><th>Live</th><th /></tr>
+              <tr><th>Message</th><th>Channel</th><th>Provider template</th>
+                <th>Live</th><th /></tr>
             </thead>
             <tbody>
               {d.configs.map((c) => (
                 <tr key={c.id} style={{ opacity: c.is_active ? 1 : 0.55 }}>
                   <td><b>{c.name}</b><span className="dim"> {c.slug}</span></td>
                   <td>{c.channel}</td>
-                  <td className="dim">{c.template || '—'}</td>
                   <td className="dim">
-                    {(c.variables || []).map((v, i) => `${i + 1}:${v}`).join('  ') || '—'}
+                    {c.channel === 'whatsapp'
+                      ? (c.payload_template?.whatsapp?.template?.templateName || c.template || '—')
+                      : (c.subject || '—')}
                   </td>
-                  <td>{c.attach_receipt ? <span className="pill g">attached</span> : <span className="dim">no</span>}</td>
                   <td>
                     {rank >= 2
                       ? <button onClick={() => toggle(c)}>{c.is_active ? 'On' : 'Off'}</button>
@@ -519,19 +516,18 @@ function Messages({ rank, onErr, say }) {
 }
 
 function MessageDialog({ cfg, fields, onClose, onSaved, onErr }) {
-  const [f, setF] = useState({ ...cfg, variables: cfg.variables || [] });
+  const [f, setF] = useState({
+    ...cfg,
+    payload_template: cfg.payload_template
+      ? JSON.stringify(cfg.payload_template, null, 2) : '',
+    extra_values: cfg.extra_values && Object.keys(cfg.extra_values).length
+      ? JSON.stringify(cfg.extra_values, null, 2) : '',
+  });
   const [busy, setBusy] = useState(false);
+  const [preview, setPreview] = useState(null);
   const set = (k) => (e) => setF((s) => ({
     ...s, [k]: e.target.type === 'checkbox' ? e.target.checked : e.target.value,
   }));
-
-  const move = (i, dir) => setF((s) => {
-    const v = [...s.variables];
-    const j = i + dir;
-    if (j < 0 || j >= v.length) return s;
-    [v[i], v[j]] = [v[j], v[i]];
-    return { ...s, variables: v };
-  });
 
   async function save() {
     setBusy(true);
@@ -539,9 +535,19 @@ function MessageDialog({ cfg, fields, onClose, onSaved, onErr }) {
     catch (e) { onErr(e.message); setBusy(false); }
   }
 
+  async function doPreview() {
+    setPreview(null);
+    try {
+      let draft = { ...f };
+      if (f.channel === 'whatsapp') draft.payload_template = JSON.parse(f.payload_template || '{}');
+      draft.extra_values = f.extra_values ? JSON.parse(f.extra_values) : {};
+      setPreview(await api('notif.preview', { draft }));
+    } catch (e) { setPreview({ error: e.message }); }
+  }
+
   return (
     <div className="mask" onClick={(e) => e.target === e.currentTarget && onClose()}>
-      <div className="dlg">
+      <div className="dlg" style={{ maxWidth: 820 }}>
         <h3>{cfg.id ? `Edit ${cfg.name}` : 'New message'}</h3>
         <div className="bd">
           <div className="g2">
@@ -557,65 +563,90 @@ function MessageDialog({ cfg, fields, onClose, onSaved, onErr }) {
           {f.channel === 'whatsapp' ? (
             <>
               <div className="fg">
-                <label>Gallabox template name</label>
-                <input value={f.template || ''} onChange={set('template')} placeholder="receipt_new_format_test" />
+                <label>Gallabox payload</label>
+                <textarea
+                  rows={16} spellCheck={false}
+                  style={{ fontFamily: 'ui-monospace,Menlo,Consolas,monospace', fontSize: 12 }}
+                  value={f.payload_template || ''} onChange={set('payload_template')}
+                  placeholder={'{\n  "channelId": "678f94abff53fb70a4055427",\n  "channelType": "whatsapp",\n  "recipient": { "name": "{{donor_name}}", "rawPhone": "{{phone}}" },\n  "whatsapp": { "type": "template", "template": { … } }\n}'}
+                />
               </div>
               <p className="hint">
-                Must match the approved template in Gallabox exactly. The variables below fill its
-                positional <code>bodyValues</code> — position 1 is the first <code>{'{{1}}'}</code>.
+                Paste the complete payload exactly as Gallabox gives it for the approved template —
+                <code>channelId</code> and all. Every <code>{'{{placeholder}}'}</code> is filled per
+                donation. A new template is a paste, not a deploy.
+                <br />
+                <b>recipient must contain <code>phone</code> or <code>rawPhone</code></b>, spelled
+                exactly. <code>rawphone</code> is not recognised and every send returns 422.
+                <br />
+                <code>{'{{phone}}'}</code> has no leading <code>+</code> — Gallabox rejects it.
               </p>
             </>
           ) : (
             <>
               <div className="fg"><label>Subject</label>
-                <input value={f.subject || ''} onChange={set('subject')} placeholder="Your ISKCON Chennai receipt {{receipt_no}}" /></div>
-              <div className="fg"><label>Body</label>
-                <textarea rows={5} value={f.body || ''} onChange={set('body')}
-                  placeholder="Hare Krishna {{donor_name}}, thank you for your offering of {{amount}}…" /></div>
-              <p className="hint">Use <code>{'{{field}}'}</code> anywhere in the subject or body.</p>
+                <input value={f.subject || ''} onChange={set('subject')}
+                  placeholder="Your ISKCON Chennai receipt {{receipt_no}}" /></div>
+              <div className="fg"><label>HTML</label>
+                <textarea
+                  rows={14} spellCheck={false}
+                  style={{ fontFamily: 'ui-monospace,Menlo,Consolas,monospace', fontSize: 12 }}
+                  value={f.html || ''} onChange={set('html')}
+                  placeholder={'<div style="font-family:sans-serif">\n  <p>Hare Krishna {{donor_name}},</p>\n</div>'}
+                /></div>
             </>
           )}
 
-          <h3>Variables {f.channel === 'whatsapp' ? '(order matters)' : ''}</h3>
-          {f.variables.length === 0 && <p className="hint">None yet — add from the list below.</p>}
-          <table className="mini">
-            <tbody>
-              {f.variables.map((v, i) => (
-                <tr key={`${v}-${i}`}>
-                  <td style={{ width: 30 }}><b>{i + 1}</b></td>
-                  <td>{v}<span className="dim"> {(fields.find((x) => x[0] === v) || [])[1]}</span></td>
-                  <td style={{ width: 140 }}>
-                    <button onClick={() => move(i, -1)} disabled={i === 0}>↑</button>{' '}
-                    <button onClick={() => move(i, 1)} disabled={i === f.variables.length - 1}>↓</button>{' '}
-                    <button onClick={() => setF((s) => ({ ...s, variables: s.variables.filter((_, j) => j !== i) }))}>×</button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-
           <div className="fg">
-            <label>Add a field</label>
-            <select
-              value=""
-              onChange={(e) => {
-                if (!e.target.value) return;
-                setF((s) => ({ ...s, variables: [...s.variables, e.target.value] }));
-              }}
-            >
-              <option value="">— choose —</option>
-              {fields.map(([k, label]) => <option key={k} value={k}>{k} — {label}</option>)}
-            </select>
+            <label>Extra static values (JSON, optional)</label>
+            <textarea rows={3} spellCheck={false}
+              style={{ fontFamily: 'ui-monospace,Menlo,Consolas,monospace', fontSize: 12 }}
+              value={f.extra_values || ''} onChange={set('extra_values')}
+              placeholder={'{ "support_phone": "6385042108" }'} />
           </div>
+
+          <p className="hint">
+            Available placeholders:{' '}
+            {fields.map(([k, label]) => (
+              <code key={k} title={label} style={{ marginRight: 4 }}>{`{{${k}}}`}</code>
+            ))}
+          </p>
 
           <div className="tagpick">
-            <label><input type="checkbox" checked={!!f.attach_receipt} onChange={set('attach_receipt')} /> Attach the receipt PDF</label>
-            <label><input type="checkbox" checked={!!f.is_active} onChange={set('is_active')} /> Live</label>
+            <label><input type="checkbox" checked={!!f.is_active} onChange={set('is_active')} /> Live — actually send this</label>
           </div>
-          <p className="hint">
-            A message only goes out when it is Live <b>and</b> its channel is in
-            <code> NOTIFY_CHANNELS</code>. Otherwise it&apos;s recorded as skipped.
-          </p>
+
+          <div className="actions" style={{ justifyContent: 'flex-start' }}>
+            <button onClick={doPreview}>Preview</button>
+          </div>
+
+          {preview && (preview.error ? (
+            <div className="errbox"><b>Template problem</b><br />{preview.error}</div>
+          ) : (
+            <>
+              {preview.warnings?.length > 0 && (
+                <div className="warnbox">{preview.warnings.map((w, i) => <div key={i}>{w}</div>)}</div>
+              )}
+              <h3>
+                Preview {preview.sample && <span className="dim">(sample donor — no real donation used)</span>}
+              </h3>
+              <p className="hint">To: <b>{preview.to || '—'}</b></p>
+              {preview.channel === 'email' ? (
+                <>
+                  <p className="hint">Subject: <b>{preview.subject}</b></p>
+                  <iframe
+                    title="Email preview" sandbox=""
+                    srcDoc={preview.html}
+                    style={{ width: '100%', height: 340, border: '1px solid var(--line)', borderRadius: 8, background: '#fff' }}
+                  />
+                </>
+              ) : (
+                <pre style={{ whiteSpace: 'pre-wrap', fontSize: 12, background: 'var(--bg)', padding: 12, borderRadius: 8 }}>
+                  {JSON.stringify(preview.json, null, 2)}
+                </pre>
+              )}
+            </>
+          ))}
 
           <div className="fg"><label>Notes</label><input value={f.notes || ''} onChange={set('notes')} /></div>
         </div>
