@@ -45,7 +45,6 @@ export default function Login() {
       <form className="loginbox" onSubmit={submit}>
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img src="/logo.png" alt="ISKCON Chennai" className="login-logo" width={344} height={338} />
-        <h1>Devotee Relationship Management</h1>
         <p className="s">Sign in to continue</p>
         {err && <div className="errbox">{err}</div>}
         <div className="fg">

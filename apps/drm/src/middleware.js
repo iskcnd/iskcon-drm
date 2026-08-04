@@ -2,7 +2,13 @@ import { NextResponse } from 'next/server';
 import { verifyEdge, COOKIE } from '@/lib/session-edge';
 
 // Everything is protected except the login page and the login endpoint.
-const PUBLIC = ['/login', '/api/auth/login'];
+//
+// /logo.png is here because the login page shows it before a session exists.
+// Without it the request is redirected to /login, the browser receives HTML
+// where it expected an image, and the logo renders as a broken-image icon.
+// Listed by name rather than by file extension: only what is named here is
+// reachable without signing in.
+const PUBLIC = ['/login', '/api/auth/login', '/logo.png'];
 
 export async function middleware(req) {
   const { pathname } = req.nextUrl;

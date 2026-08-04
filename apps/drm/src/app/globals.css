@@ -184,8 +184,7 @@ code{background:var(--bg);padding:1px 5px;border-radius:4px;font-size:12px;borde
 
 .loginwrap{display:flex;align-items:center;justify-content:center;height:100vh;padding:20px}
 .loginbox{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:28px;width:100%;max-width:380px}
-.login-logo{display:block;width:82px;height:auto;margin:0 auto 18px}
-.loginbox h1{font-size:16px;font-weight:600;margin-bottom:4px;text-align:center}
+.login-logo{display:block;width:92px;height:auto;margin:0 auto 16px}
 .loginbox p.s{font-size:12px;color:var(--faint);margin-bottom:20px;text-align:center}
 
 /* ------------------------------------------------------------- home screen */
@@ -205,9 +204,6 @@ code{background:var(--bg);padding:1px 5px;border-radius:4px;font-size:12px;borde
 .motifs .m7{width:120px;height:120px;top:36px;left:44%;opacity:.04}
 @media (max-width:1080px){.motifs .m2,.motifs .m4,.motifs .m7{display:none}}
 
-.home-logo{display:block;width:108px;height:auto;margin-bottom:20px}
-.home-greet{font-size:12px;letter-spacing:.09em;text-transform:uppercase;color:var(--acc);margin-bottom:6px}
-.home-sub{font-size:13px;color:var(--faint);margin-bottom:34px}
 .home-h2{font-size:15px;font-weight:600;margin-bottom:14px}
 
 /* ------------------------------------------------------------------ verse */

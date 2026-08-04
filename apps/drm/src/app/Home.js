@@ -48,18 +48,14 @@ const MODULES = [
 
 export default function Home({ user }) {
   const rank = RANK[user.role] ?? 0;
-  const first = (user.name || '').trim().split(/\s+/)[0] || 'devotee';
 
   return (
     <div className="home">
       <MotifField />
 
       <div className="content home-inner">
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src="/logo.png" alt="ISKCON Chennai" className="home-logo" width={344} height={338} />
-        <p className="home-greet">Hare Kṛṣṇa, {first}</p>
-        <p className="home-sub">Devotee Relationship Management</p>
-
+        {/* The masthead lives in the nav bar. Repeating the logo and the app
+            name here only pushed the verse below the fold. */}
         <section className="verse" aria-label={VERSE.source}>
           <div className="verse-deva" lang="sa">
             {VERSE.devanagari.map((l) => <div key={l}>{l}</div>)}
