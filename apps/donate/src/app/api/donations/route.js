@@ -40,6 +40,10 @@ export async function POST(request) {
       personId: body.personId || null,
       newPerson: body.newPerson || null,
       gateway,
+      // Referral code from ?ref= on the share link. Trusted only as far as a
+      // lookup: an unknown code resolves to nobody and the donation is still
+      // recorded. Losing the attribution is survivable; losing the gift is not.
+      ref: typeof body.ref === 'string' ? body.ref.slice(0, 40) : null,
     });
     const payment = await buildRequest(gateway, {
       orderRef: r.orderRef,

@@ -173,6 +173,10 @@ export default function DonateClient({ categories, campaigns, videoId }) {
       isRecurring: isMonthlyCat && monthly,
       prasadam: form.prasadam,
       gateway,
+      // Read at submit rather than held in state: the donor may have arrived
+      // on /?ref=gopal and navigated within the page, and the query string is
+      // the only place that code lives.
+      ref: new URLSearchParams(window.location.search).get('ref') || null,
       personId,
       newPerson: personId
         ? (needsAddressOnly ? { addressLine: form.addressLine, pincode: form.pincode, pan: form.pan || null } : null)

@@ -87,7 +87,7 @@ export async function lookupByMobile(national, cc = '+91') {
 export async function createDonation(input) {
   const {
     categorySlug, campaignSlug, amount, sevaDate, isRecurring,
-    personId, newPerson, prasadam, gateway,
+    personId, newPerson, prasadam, gateway, ref,
   } = input;
 
   return tx(async (c) => {
@@ -207,14 +207,43 @@ export async function createDonation(input) {
       await c.query(`UPDATE person SET pan = COALESCE(pan, $2) WHERE id = $1`, [pid, newPerson.pan.toUpperCase()]);
     }
 
+    // Who gets credit. The ?ref= code on the share link resolves to a Zoho
+    // record id here, at donation time — Zoho's Employee_Name and
+    // Volunteer_Name are lookups, and a name sent to a lookup is dropped
+    // silently. Both name columns are filled too, so the staff app and the
+    // day sheets read the same without a join.
+    const code = String(ref || '').trim().toLowerCase();
+    let staff = null; let volunteer = null;
+    if (code) {
+      staff = (await c.query(
+        'SELECT id, name FROM zoho_employee WHERE lower(ref_code) = $1', [code])).rows[0] || null;
+      if (!staff) {
+        volunteer = (await c.query(
+          'SELECT id, name FROM zoho_volunteer WHERE lower(ref_code) = $1 AND is_active', [code])).rows[0] || null;
+      }
+    }
+
     const don = await c.query(
       `INSERT INTO donation (person_id, amount, seva_category_id, campaign_id, seva_date,
-                             is_recurring, prasadam_optin, gateway, status, external_source, donated_on)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'pending','donation-page',CURRENT_DATE)
+                             is_recurring, prasadam_optin, gateway, status, external_source, donated_on,
+                             staff_id, volunteer_id, collected_by, volunteer_name)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'pending','donation-page',CURRENT_DATE,$9,$10,$11,$12)
        RETURNING id`,
-      [pid, amount, cat?.id || null, camp?.id || null, sevaDate || null, !!isRecurring, !!prasadam, gateway]
+      [pid, amount, cat?.id || null, camp?.id || null, sevaDate || null, !!isRecurring, !!prasadam, gateway,
+        staff?.id || null, volunteer?.id || null, staff?.name || null, volunteer?.name || null]
     );
     const donationId = don.rows[0].id;
+
+    // First touch, permanent. person_id is the primary key, so ON CONFLICT DO
+    // NOTHING is the whole rule: whoever brought this devotee in keeps the
+    // credit, and a later link from someone else cannot take it.
+    if (staff || volunteer) {
+      await c.query(
+        `INSERT INTO person_referral (person_id, staff_id, volunteer_id, first_donation_id, ref_code)
+         VALUES ($1,$2,$3,$4,$5) ON CONFLICT (person_id) DO NOTHING`,
+        [pid, staff?.id || null, volunteer?.id || null, donationId, code]
+      );
+    }
 
     const ref = orderRef();
     await c.query(
