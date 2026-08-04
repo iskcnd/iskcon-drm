@@ -184,3 +184,63 @@ code{background:var(--bg);padding:1px 5px;border-radius:4px;font-size:12px;borde
 .loginbox{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:28px;width:100%;max-width:380px}
 .loginbox h1{font-size:17px;font-weight:600;margin-bottom:4px}
 .loginbox p.s{font-size:12px;color:var(--faint);margin-bottom:20px}
+
+/* ------------------------------------------------------------- home screen */
+/* Signing in opens this, not the devotee table. The motifs are watermark:
+   they sit in the margins, never behind running text. */
+.home{position:relative;flex:1;overflow:hidden}
+.home-inner{position:relative;z-index:1;padding-top:44px;padding-bottom:80px;max-width:900px}
+
+.motifs{position:absolute;inset:0;pointer-events:none;overflow:hidden;color:var(--acc)}
+.motifs .m{position:absolute;display:block}
+.motifs .m1{width:420px;height:420px;top:-130px;right:-120px;opacity:.055}
+.motifs .m2{width:210px;height:210px;top:120px;left:-72px;opacity:.05;transform:rotate(-12deg)}
+.motifs .m3{width:180px;height:180px;top:430px;right:-40px;opacity:.05}
+.motifs .m4{width:250px;height:250px;bottom:120px;left:-60px;opacity:.05}
+.motifs .m5{width:150px;height:150px;bottom:-24px;right:110px;opacity:.05}
+.motifs .m6{width:300px;height:300px;bottom:-110px;left:38%;opacity:.04}
+.motifs .m7{width:120px;height:120px;top:36px;left:44%;opacity:.04}
+@media (max-width:1080px){.motifs .m2,.motifs .m4,.motifs .m7{display:none}}
+
+.home-greet{font-size:12px;letter-spacing:.09em;text-transform:uppercase;color:var(--acc);margin-bottom:10px}
+.home-title{font-size:30px;font-weight:600;letter-spacing:-.015em;margin-bottom:2px}
+.home-sub{font-size:13px;color:var(--faint);margin-bottom:34px}
+.home-h2{font-size:15px;font-weight:600;margin-bottom:14px}
+
+/* ------------------------------------------------------------------ verse */
+.verse{background:linear-gradient(180deg,#fffdfa 0%,var(--card) 55%);
+  border:1px solid var(--line);border-left:3px solid var(--acc);
+  border-radius:12px;padding:30px 34px;margin-bottom:38px}
+.verse-deva{font-family:"Noto Sans Devanagari","Nirmala UI","Kohinoor Devanagari",
+  "Devanagari MT","Mangal",serif;
+  font-size:21px;line-height:2;color:var(--ink);margin-bottom:20px}
+.verse-iast{font-style:italic;font-size:15px;line-height:1.95;color:var(--acc);margin-bottom:20px}
+.verse-tr{font-size:14.5px;line-height:1.85;color:var(--mut);max-width:62ch;margin-bottom:16px}
+.verse-src{font-size:11.5px;color:var(--faint);letter-spacing:.01em}
+.verse-src span{color:#b3b3ac}
+@media (max-width:640px){
+  .verse{padding:22px 20px}
+  .verse-deva{font-size:18px;line-height:1.9}
+}
+
+/* ---------------------------------------------------------------- purpose */
+.purpose{margin-bottom:38px}
+.purpose h2{font-size:15px;font-weight:600;margin-bottom:16px}
+.purpose-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+@media (max-width:720px){.purpose-grid{grid-template-columns:1fr}}
+.purpose-item{display:flex;gap:13px;align-items:flex-start;
+  background:var(--card);border:1px solid var(--line);border-radius:11px;padding:15px 17px}
+.purpose-icon{width:30px;height:30px;flex:0 0 30px;color:var(--acc);opacity:.75;margin-top:1px}
+.purpose-item b{display:block;font-size:13.5px;font-weight:600;margin-bottom:3px}
+.purpose-item span{display:block;font-size:12px;color:var(--faint);line-height:1.6}
+.purpose-note{margin-top:14px;font-size:13px;color:var(--acc);font-style:italic}
+
+/* ----------------------------------------------------------- module cards */
+.home-cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(232px,1fr));gap:12px}
+.home-card{display:block;text-decoration:none;color:inherit;
+  background:var(--card);border:1px solid var(--line);border-radius:11px;padding:15px 17px;
+  transition:border-color .12s,transform .12s}
+.home-card:hover{border-color:var(--acc);transform:translateY(-1px)}
+.home-card b{display:block;font-size:13.5px;font-weight:600;margin-bottom:4px}
+.home-card:hover b{color:var(--acc)}
+.home-card span{display:block;font-size:12px;color:var(--faint);line-height:1.6}
