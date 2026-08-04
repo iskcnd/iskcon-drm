@@ -12,7 +12,9 @@ input:focus,select:focus,textarea:focus{outline:2px solid var(--accbg);border-co
 
 /* ---------------------------------------------------------------- top nav */
 #nav{display:flex;align-items:center;gap:20px;height:48px;padding:0 18px;background:var(--card);border-bottom:1px solid var(--line);flex-wrap:nowrap;overflow-x:auto}
-.nav-brand{display:flex;flex-direction:column;line-height:1.25;flex:0 0 auto}
+.nav-brand{display:flex;align-items:center;gap:9px;line-height:1.25;flex:0 0 auto}
+.nav-brand img{width:26px;height:auto;display:block}
+.nav-brand>div{display:flex;flex-direction:column}
 .nav-brand b{font-size:13px;font-weight:600}
 .nav-brand span{font-size:10px;color:var(--faint)}
 .nav-items{display:flex;gap:3px;flex:0 0 auto}
@@ -182,8 +184,9 @@ code{background:var(--bg);padding:1px 5px;border-radius:4px;font-size:12px;borde
 
 .loginwrap{display:flex;align-items:center;justify-content:center;height:100vh;padding:20px}
 .loginbox{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:28px;width:100%;max-width:380px}
-.loginbox h1{font-size:17px;font-weight:600;margin-bottom:4px}
-.loginbox p.s{font-size:12px;color:var(--faint);margin-bottom:20px}
+.login-logo{display:block;width:82px;height:auto;margin:0 auto 18px}
+.loginbox h1{font-size:16px;font-weight:600;margin-bottom:4px;text-align:center}
+.loginbox p.s{font-size:12px;color:var(--faint);margin-bottom:20px;text-align:center}
 
 /* ------------------------------------------------------------- home screen */
 /* Signing in opens this, not the devotee table. The motifs are watermark:
@@ -202,8 +205,8 @@ code{background:var(--bg);padding:1px 5px;border-radius:4px;font-size:12px;borde
 .motifs .m7{width:120px;height:120px;top:36px;left:44%;opacity:.04}
 @media (max-width:1080px){.motifs .m2,.motifs .m4,.motifs .m7{display:none}}
 
-.home-greet{font-size:12px;letter-spacing:.09em;text-transform:uppercase;color:var(--acc);margin-bottom:10px}
-.home-title{font-size:30px;font-weight:600;letter-spacing:-.015em;margin-bottom:2px}
+.home-logo{display:block;width:108px;height:auto;margin-bottom:20px}
+.home-greet{font-size:12px;letter-spacing:.09em;text-transform:uppercase;color:var(--acc);margin-bottom:6px}
 .home-sub{font-size:13px;color:var(--faint);margin-bottom:34px}
 .home-h2{font-size:15px;font-weight:600;margin-bottom:14px}
 
@@ -225,7 +228,6 @@ code{background:var(--bg);padding:1px 5px;border-radius:4px;font-size:12px;borde
 
 /* ---------------------------------------------------------------- purpose */
 .purpose{margin-bottom:38px}
-.purpose h2{font-size:15px;font-weight:600;margin-bottom:16px}
 .purpose-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
 @media (max-width:720px){.purpose-grid{grid-template-columns:1fr}}
 .purpose-item{display:flex;gap:13px;align-items:flex-start;
@@ -233,7 +235,6 @@ code{background:var(--bg);padding:1px 5px;border-radius:4px;font-size:12px;borde
 .purpose-icon{width:30px;height:30px;flex:0 0 30px;color:var(--acc);opacity:.75;margin-top:1px}
 .purpose-item b{display:block;font-size:13.5px;font-weight:600;margin-bottom:3px}
 .purpose-item span{display:block;font-size:12px;color:var(--faint);line-height:1.6}
-.purpose-note{margin-top:14px;font-size:13px;color:var(--acc);font-style:italic}
 
 /* ----------------------------------------------------------- module cards */
 .home-cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(232px,1fr));gap:12px}

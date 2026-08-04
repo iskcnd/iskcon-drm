@@ -36,8 +36,12 @@ export default function Nav({ user }) {
   return (
     <div id="nav">
       <div className="nav-brand">
-        <b>ISKCON Chennai</b>
-        <span>Devotee Relationship Management</span>
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src="/logo.png" alt="" width={344} height={338} />
+        <div>
+          <b>ISKCON Chennai</b>
+          <span>Devotee Relationship Management</span>
+        </div>
       </div>
 
       <nav className="nav-items">

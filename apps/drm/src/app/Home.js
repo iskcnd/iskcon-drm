@@ -55,8 +55,9 @@ export default function Home({ user }) {
       <MotifField />
 
       <div className="content home-inner">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src="/logo.png" alt="ISKCON Chennai" className="home-logo" width={344} height={338} />
         <p className="home-greet">Hare Kṛṣṇa, {first}</p>
-        <h1 className="home-title">ISKCON Chennai</h1>
         <p className="home-sub">Devotee Relationship Management</p>
 
         <section className="verse" aria-label={VERSE.source}>
@@ -74,7 +75,6 @@ export default function Home({ user }) {
         </section>
 
         <section className="purpose">
-          <h2>This app exists to help devotees</h2>
           <div className="purpose-grid">
             {PURPOSE.map(({ Icon, title, note }) => (
               <div className="purpose-item" key={title}>
@@ -86,7 +86,6 @@ export default function Home({ user }) {
               </div>
             ))}
           </div>
-          <p className="purpose-note">This verse beautifully captures all of these.</p>
         </section>
 
         <section>
