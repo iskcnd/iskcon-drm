@@ -22,8 +22,6 @@ const TEMPLATE = 'receipt-template.jpg';
 const PAGE = { w: 612, h: 792 };
 
 const INK = '#1A1A1A';
-const FIELD_FILL = '#EDECF6'; // the form's own pale lavender field colour
-const FIELD_LINE = '#EC4979'; // the form's own pink rule colour
 
 /**
  * Field geometry, in points, taken from the template artwork.
@@ -31,7 +29,11 @@ const FIELD_LINE = '#EC4979'; // the form's own pink rule colour
  * sits just above its rule, the way handwriting does.
  */
 const F = {
-  receiptNo: { x: 452, y: 54, w: 92, h: 26 },
+  // The form's own serial ("0058 31") is printed at x 458.6-513.0, with digit
+  // tops at y 60.9 and bottoms at 72.2 — 11.3pt of cap height. Ours is
+  // appended after it, matched to those measurements so the two read as one
+  // number: "0058 31 200002".
+  receiptNo: { x: 519, top: 60.9, size: 15.7 },
   date: { x: 466.6, y: 92.2, w: 128.2, h: 30.2 },
   amountWords: { x: 58, y: 133.9, w: 400, h: 31.7 },
   amountFigure: { x: 494, y: 133.9, w: 96, h: 31.7 },   // right of the pink Rs. badge
@@ -160,15 +162,12 @@ export function renderReceiptPDF(d) {
   };
 
   // ------------------------------------------------------------ receipt no.
-  // The printed book carries its own serial (0058 31 on the artwork). A digital
-  // receipt has to show OUR number, so the pre-printed one is covered by a
-  // field box drawn in the form's own colours — it reads as part of the design
-  // rather than as a patch, which a white rectangle over the watermark would.
+  // The form's pre-printed serial stays. Ours is written after it, matched in
+  // size and weight, so the pair reads as one number the way it does when a
+  // clerk writes the book number beside the printed one.
   const rn = F.receiptNo;
-  doc.roundedRect(rn.x, rn.y, rn.w, rn.h, 3).fillAndStroke(FIELD_FILL, FIELD_LINE);
-  doc.font('Helvetica-Bold').fontSize(15).fillColor(INK)
-    .text(String(d.receipt_no ?? ''), rn.x, rn.y + (rn.h - 15) / 2 - 1,
-      { width: rn.w, align: 'center', lineBreak: false });
+  doc.font('Helvetica').fontSize(rn.size).fillColor(INK)
+    .text(String(d.receipt_no ?? ''), rn.x, rn.top, { lineBreak: false });
 
   // ------------------------------------------------------------------ date
   const dt = d.donated_on instanceof Date ? d.donated_on : new Date(d.donated_on);
