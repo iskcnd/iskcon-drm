@@ -245,11 +245,15 @@ export async function createDonation(input) {
       );
     }
 
-    const ref = orderRef();
+    // Named attemptRef, not ref: `ref` is this function's referral-code
+    // parameter. A `const ref` here put every earlier use of the parameter
+    // into the temporal dead zone, so createDonation threw before it reached
+    // the insert and no donation could be created at all.
+    const attemptRef = orderRef();
     await c.query(
       `INSERT INTO payment_attempt (donation_id, gateway, attempt_no, order_ref, status)
        VALUES ($1,$2,1,$3,'initiated')`,
-      [donationId, gateway, ref]
+      [donationId, gateway, attemptRef]
     );
 
     const person = (await c.query(
@@ -257,7 +261,7 @@ export async function createDonation(input) {
     )).rows[0];
 
     return {
-      donationId, orderRef: ref, personId: pid,
+      donationId, orderRef: attemptRef, personId: pid,
       productinfo: camp ? `Campaign: ${camp.slug}` : `Seva: ${cat.slug}`,
       person,
     };
