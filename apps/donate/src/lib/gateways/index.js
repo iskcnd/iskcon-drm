@@ -6,6 +6,27 @@ import * as easebuzz from './easebuzz.js';
  * Which gateways exist, in the default order they're offered.
  * `env` lists the variables required before a gateway can be used at all.
  */
+/**
+ * productinfo, made safe for every gateway.
+ *
+ * Easebuzz rejects the whole request with "Invalid value for productinfo" when
+ * it contains punctuation — our "Seva: annadanam" failed validation and the
+ * donor never reached a payment page. PayU accepts it, which is why this went
+ * unnoticed until someone picked the second gateway.
+ *
+ * The value is also part of the request AND response hash on both gateways, so
+ * it has to be sanitised once, here, before it is signed — sanitising later
+ * would break the signature and turn a real payment into a hash mismatch.
+ */
+export function safeProductInfo(text) {
+  const clean = String(text || '')
+    .replace(/[^A-Za-z0-9 ]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 100);
+  return clean || 'Seva';
+}
+
 export const GATEWAYS = {
   payu: {
     label: 'PayU',

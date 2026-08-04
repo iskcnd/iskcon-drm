@@ -3,6 +3,7 @@ import { maskName, orderRef } from './util.js';
 import { enqueueZohoWebhook } from './zoho.js';
 import { parsePhone } from './phone.js';
 import { queueReceiptNotifications } from './notify.js';
+import { safeProductInfo } from './gateways/index.js';
 
 /** Public actor sentinel for audit rows written by the donation page. */
 const PUBLIC_ACTOR = process.env.PUBLIC_ACTOR_ID || null;
@@ -262,7 +263,7 @@ export async function createDonation(input) {
 
     return {
       donationId, orderRef: attemptRef, personId: pid,
-      productinfo: camp ? `Campaign: ${camp.slug}` : `Seva: ${cat.slug}`,
+      productinfo: safeProductInfo(camp ? `Campaign ${camp.slug}` : `Seva ${cat.slug}`),
       person,
     };
   }, PUBLIC_ACTOR);
@@ -322,7 +323,7 @@ export async function createFallbackAttempt(donationId, gateway) {
       [donationId, gateway, (row.attempts || 0) + 1, ref]
     );
     await c.query(`UPDATE donation SET gateway=$2 WHERE id=$1`, [donationId, gateway]);
-    return { orderRef: ref, amount: row.amount, person: row, productinfo: row.campaign_slug ? `Campaign: ${row.campaign_slug}` : `Seva: ${row.slug}` };
+    return { orderRef: ref, amount: row.amount, person: row, productinfo: safeProductInfo(row.campaign_slug ? `Campaign ${row.campaign_slug}` : `Seva ${row.slug}`) };
   }, PUBLIC_ACTOR);
 }
 
