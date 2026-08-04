@@ -14,18 +14,28 @@ export async function GET(request, { params }) {
   const data = await fetchReceiptData(no);
   if (!data) return bad('Receipt not found', 404);
 
-  const doc = renderReceiptPDF(data);
-  const stream = new ReadableStream({
-    start(controller) {
-      doc.on('data', (c) => controller.enqueue(new Uint8Array(c)));
-      doc.on('end', () => controller.close());
-      doc.on('error', (e) => controller.error(e));
-    },
-  });
-  return new Response(stream, {
+  // Buffered rather than streamed. A receipt is a few KB, and buffering means
+  // a render failure is caught here — as a readable message — instead of
+  // tearing down a response whose 200 and content-type are already sent.
+  let pdf;
+  try {
+    pdf = await new Promise((resolve, reject) => {
+      const doc = renderReceiptPDF(data);
+      const chunks = [];
+      doc.on('data', (c) => chunks.push(c));
+      doc.on('end', () => resolve(Buffer.concat(chunks)));
+      doc.on('error', reject);
+    });
+  } catch (err) {
+    console.error(`[receipt] render failed for ${no}:`, err);
+    return bad('The receipt could not be generated. Staff have been notified.', 500);
+  }
+
+  return new Response(pdf, {
     headers: {
       'content-type': 'application/pdf',
-      'content-disposition': `inline; filename="${no}.pdf"`,
+      'content-length': String(pdf.length),
+      'content-disposition': `inline; filename="Receipt-${no}.pdf"`,
       'cache-control': 'no-store',
     },
   });

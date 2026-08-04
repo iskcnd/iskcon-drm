@@ -4,6 +4,14 @@ const nextConfig = {
   poweredByHeader: false,
   // Overridable for sandboxed environments where .next cleanup is restricted.
   distDir: process.env.NEXT_DIST_DIR || '.next',
+
+  // pdfkit reads its font-metric files (Helvetica.afm and friends) from a path
+  // relative to its own __dirname. Bundling it rewrites __dirname to the build
+  // chunk, so every receipt died with
+  //   ENOENT ... /node_modules/pdfkit/js/data/Helvetica.afm
+  // Leaving it external means it loads from node_modules with __dirname intact.
+  // Do not remove this without downloading a receipt from a deployed build.
+  serverExternalPackages: ['pdfkit'],
   async headers() {
     return [
       {

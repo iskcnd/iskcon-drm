@@ -2,6 +2,8 @@ node_modules/
 .next/
 out/
 build/
+# Builds run with NEXT_DIST_DIR land here. They are large and machine-specific.
+apps/*/tmp/
 .env
 .env.local
 .env*.local

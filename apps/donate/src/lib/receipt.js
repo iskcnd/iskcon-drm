@@ -79,6 +79,19 @@ export function renderReceiptPDF(d) {
   const doc = new PDFDocument({ size: 'A4', margins: { top: 36, left: 40, right: 40, bottom: 36 } });
   const W = doc.page.width - 80;
 
+  /**
+   * A caption that sits on a box's top edge. The border is stroked first, so
+   * without an opaque patch behind it the line runs straight through the
+   * words — on the printed form the border breaks around the label.
+   */
+  const cap = (text, x, yy, o = {}) => {
+    doc.font('Helvetica-Bold').fontSize(o.size || 9);
+    const w = doc.widthOfString(text) + 8;
+    const left = o.width ? x + (o.width - w) / 2 : x - 4;
+    doc.rect(left, yy - 1, w, doc.currentLineHeight() + 2).fill('#FFFFFF');
+    doc.fillColor(o.color || RED).text(text, left + 4, yy, { lineBreak: false });
+  };
+
   try {
     doc.image(path.join(process.cwd(), 'public', 'logo.png'), 40, 40, { width: 64 });
   } catch { /* logo optional */ }
@@ -118,8 +131,7 @@ export function renderReceiptPDF(d) {
   const dateBoxW = 150;
   const dateBoxX = 40 + W - dateBoxW;
   doc.roundedRect(dateBoxX, y + 30, dateBoxW, 24, 3).stroke(RED);
-  doc.fillColor(RED).font('Helvetica-Bold').fontSize(8)
-    .text('Date', dateBoxX, y + 25, { width: dateBoxW, align: 'center' });
+  cap('Date', dateBoxX, y + 25, { width: dateBoxW, size: 8 });
   doc.fillColor(INK).font('Helvetica-Bold').fontSize(11)
     .text(dt.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }),
       dateBoxX, y + 37, { width: dateBoxW, align: 'center' });
@@ -131,14 +143,14 @@ export function renderReceiptPDF(d) {
 
   y += 66;
   doc.roundedRect(40, y, W, 34, 4).stroke(RED);
-  doc.fillColor(RED).font('Helvetica-Bold').fontSize(9).text('Donation Amount in Rupees', 52, y - 5, { width: 200 });
+  cap('Donation Amount in Rupees', 56, y - 5);
   doc.fillColor(INK).font('Helvetica-Bold').fontSize(13)
     .text(`Rs. ${Number(d.amount).toLocaleString('en-IN')}/-   (Rupees ${amountInWords(d.amount)} only)`, 52, y + 10);
 
   y += 50;
   const colW = W / 2 - 8;
   doc.roundedRect(40, y, colW, 150, 4).stroke(RED);
-  doc.fillColor(RED).font('Helvetica-Bold').fontSize(9).text('Donor Details (T&C below for 80G/10BE)', 52, y - 5);
+  cap('Donor Details (T&C below for 80G/10BE)', 56, y - 5);
   const addr = [d.address_line, d.area, d.city, d.state].filter(Boolean).join(', ');
   doc.fillColor(INK).font('Helvetica').fontSize(9.5);
   const L = (label, val, yy) => {
@@ -157,7 +169,7 @@ export function renderReceiptPDF(d) {
   const rx = 40 + colW + 16;
   const R = (label, val, yy, h = 40) => {
     doc.roundedRect(rx, yy, colW, h, 4).stroke(RED);
-    doc.fillColor(RED).font('Helvetica-Bold').fontSize(9).text(label, rx + 10, yy - 5);
+    cap(label, rx + 14, yy - 5);
     doc.fillColor(INK).font('Helvetica').fontSize(9.5).text(val || '—', rx + 10, yy + 10, { width: colW - 20 });
     return yy + h + 14;
   };
