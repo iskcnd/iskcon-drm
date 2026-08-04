@@ -182,7 +182,23 @@ code{background:var(--bg);padding:1px 5px;border-radius:4px;font-size:12px;borde
 .tagpick label{display:flex;gap:5px;align-items:center;font-size:12px;border:1px solid var(--line);padding:4px 9px;border-radius:20px;cursor:pointer}
 .tagpick input{width:auto}
 
-.loginwrap{display:flex;align-items:center;justify-content:center;height:100vh;padding:20px}
+.loginwrap{position:relative;display:flex;align-items:center;justify-content:center;
+  height:100vh;padding:20px;overflow:hidden}
+.loginbox{position:relative;z-index:1}
+/* The motif field is tuned for the home page's long scroll. On a single
+   centred card it needs its own placement, kept clear of the box itself. */
+.loginwrap .motifs .m1{width:380px;height:380px;top:-124px;right:-104px;opacity:.06}
+.loginwrap .motifs .m2{width:190px;height:190px;top:13%;left:-46px;opacity:.055}
+.loginwrap .motifs .m3{width:158px;height:158px;bottom:9%;right:7%;opacity:.055}
+.loginwrap .motifs .m4{width:230px;height:230px;bottom:-54px;left:-34px;opacity:.05}
+.loginwrap .motifs .m5{width:128px;height:128px;top:12%;right:16%;opacity:.05}
+.loginwrap .motifs .m6{width:280px;height:280px;bottom:-124px;left:8%;opacity:.045}
+.loginwrap .motifs .m7{display:none}
+@media (max-width:760px){.loginwrap .motifs .m3,.loginwrap .motifs .m5{display:none}}
+
+.login-mantra{margin-top:20px;padding-top:16px;border-top:1px solid var(--line2);text-align:center}
+.login-lotus{display:block;width:24px;height:24px;margin:0 auto 8px;color:var(--acc);opacity:.5}
+.login-mantra p{font-size:11px;line-height:1.9;color:var(--faint);font-style:italic;letter-spacing:.01em}
 .loginbox{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:28px;width:100%;max-width:380px}
 .login-logo{display:block;width:92px;height:auto;margin:0 auto 16px}
 .loginbox p.s{font-size:12px;color:var(--faint);margin-bottom:20px;text-align:center}
@@ -191,7 +207,8 @@ code{background:var(--bg);padding:1px 5px;border-radius:4px;font-size:12px;borde
 /* Signing in opens this, not the devotee table. The motifs are watermark:
    they sit in the margins, never behind running text. */
 .home{position:relative;flex:1;overflow:hidden}
-.home-inner{position:relative;z-index:1;padding-top:44px;padding-bottom:80px;max-width:900px}
+.home-inner{position:relative;z-index:1;padding-top:38px;padding-bottom:80px;max-width:900px}
+.home-greet{font-size:13px;color:var(--acc);margin-bottom:20px}
 
 .motifs{position:absolute;inset:0;pointer-events:none;overflow:hidden;color:var(--acc)}
 .motifs .m{position:absolute;display:block}

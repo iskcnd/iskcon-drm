@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { MotifField, Lotus } from '../Motifs';
 
 export default function Login() {
   const [email, setEmail] = useState('');
@@ -42,6 +43,7 @@ export default function Login() {
 
   return (
     <div className="loginwrap">
+      <MotifField />
       <form className="loginbox" onSubmit={submit}>
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img src="/logo.png" alt="ISKCON Chennai" className="login-logo" width={344} height={338} />
@@ -70,6 +72,14 @@ export default function Login() {
         <button className="p" style={{ width: '100%', padding: '9px' }} disabled={busy}>
           {busy ? 'Signing in…' : 'Sign in'}
         </button>
+
+        <div className="login-mantra">
+          <Lotus className="login-lotus" />
+          <p>
+            Hare Kṛṣṇa Hare Kṛṣṇa Kṛṣṇa Kṛṣṇa Hare Hare<br />
+            Hare Rāma Hare Rāma Rāma Rāma Hare Hare
+          </p>
+        </div>
       </form>
     </div>
   );
