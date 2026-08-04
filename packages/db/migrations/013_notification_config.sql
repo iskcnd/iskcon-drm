@@ -29,6 +29,15 @@ CREATE TABLE IF NOT EXISTS notification_config (
   updated_by     uuid
 );
 
+-- CREATE TABLE IF NOT EXISTS is a no-op once the table exists, so it cannot
+-- restore a column a later migration dropped — and 015 drops `body` and
+-- `variables`, which 014 made redundant. Without these two lines a replay of
+-- the full set fails here, on a database where everything is already correct.
+-- Each migration has to establish its own preconditions, not assume the state
+-- the one before it left behind.
+ALTER TABLE notification_config ADD COLUMN IF NOT EXISTS body      text;
+ALTER TABLE notification_config ADD COLUMN IF NOT EXISTS variables jsonb NOT NULL DEFAULT '[]'::jsonb;
+
 COMMENT ON TABLE notification_config IS
   'Which messages the system sends, on which channel, with which provider template and variable mapping. Editable from the staff app so adding or disabling a message needs no deploy.';
 COMMENT ON COLUMN notification_config.variables IS
