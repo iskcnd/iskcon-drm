@@ -525,9 +525,29 @@ function MessageDialog({ cfg, fields, onClose, onSaved, onErr }) {
   });
   const [busy, setBusy] = useState(false);
   const [preview, setPreview] = useState(null);
+  const [testTo, setTestTo] = useState('');
+  const [testing, setTesting] = useState(false);
+  const [test, setTest] = useState(null);
   const set = (k) => (e) => setF((s) => ({
     ...s, [k]: e.target.type === 'checkbox' ? e.target.checked : e.target.value,
   }));
+
+  /** The draft as the server wants it — shared by Preview and Send test. */
+  function draftOf() {
+    const draft = { ...f };
+    if (f.channel === 'whatsapp') draft.payload_template = JSON.parse(f.payload_template || '{}');
+    draft.extra_values = f.extra_values ? JSON.parse(f.extra_values) : {};
+    return draft;
+  }
+
+  async function sendTest() {
+    setTest(null); setTesting(true);
+    try {
+      setTest(await api('notif.test', { draft: draftOf(), to: testTo }));
+    } catch (e) {
+      setTest({ ok: false, stage: 'request', error: e.message });
+    } finally { setTesting(false); }
+  }
 
   async function save() {
     setBusy(true);
@@ -537,12 +557,8 @@ function MessageDialog({ cfg, fields, onClose, onSaved, onErr }) {
 
   async function doPreview() {
     setPreview(null);
-    try {
-      let draft = { ...f };
-      if (f.channel === 'whatsapp') draft.payload_template = JSON.parse(f.payload_template || '{}');
-      draft.extra_values = f.extra_values ? JSON.parse(f.extra_values) : {};
-      setPreview(await api('notif.preview', { draft }));
-    } catch (e) { setPreview({ error: e.message }); }
+    try { setPreview(await api('notif.preview', { draft: draftOf() })); }
+    catch (e) { setPreview({ error: e.message }); }
   }
 
   return (
@@ -619,6 +635,43 @@ function MessageDialog({ cfg, fields, onClose, onSaved, onErr }) {
           <div className="actions" style={{ justifyContent: 'flex-start' }}>
             <button onClick={doPreview}>Preview</button>
           </div>
+
+          {/* A preview proves the template renders. Only a send proves the
+              credentials, the channel and the approved template all work —
+              which is a different question, and the one that bites. */}
+          <div className="fg">
+            <label>Send a test</label>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <input
+                value={testTo} onChange={(e) => setTestTo(e.target.value)}
+                placeholder={f.channel === 'whatsapp' ? '9840012345' : 'you@iskconchennai.org'}
+                style={{ flex: 1 }}
+              />
+              <button className="pri" disabled={testing || !testTo.trim()} onClick={sendTest}>
+                {testing ? 'Sending…' : 'Send test'}
+              </button>
+            </div>
+            <p className="hint">
+              Sends one real message now, through the same code a receipt uses, to this{' '}
+              {f.channel === 'whatsapp' ? 'number' : 'address'} only. Uses sample donor
+              values and receipt no. 200000 — it is not recorded as a receipt, and the
+              Live switch above does not affect it.
+            </p>
+          </div>
+
+          {test && (test.ok ? (
+            <div className="okbox">
+              <b>Sent to {test.to}</b>
+              {test.providerId && <> · provider id <code>{test.providerId}</code></>}
+              <br />If it does not arrive, the provider accepted it but the number is not
+              on WhatsApp, or the template is not approved for this channel.
+            </div>
+          ) : (
+            <div className="errbox">
+              <b>{test.stage === 'template' ? 'Template problem' : 'Not sent'}</b>
+              <br />{test.error}
+            </div>
+          ))}
 
           {preview && (preview.error ? (
             <div className="errbox"><b>Template problem</b><br />{preview.error}</div>

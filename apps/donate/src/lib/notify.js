@@ -71,6 +71,25 @@ export function fillTemplate(node, values) {
   });
 }
 
+/**
+ * Stand-in donation for a test send, so a template can be proven before any
+ * real donation exists. Deliberately obvious: nobody should mistake a test
+ * message for a real receipt.
+ */
+export function sampleDonation() {
+  return {
+    receipt_no: 200000,
+    amount: 1001,
+    donated_on: new Date(),
+    seva_date: new Date(),
+    purpose: 'Annadanam Seva',
+    display_name: 'Test Devotee',
+    full_name: 'Test Devotee',
+    email: '',
+    mobile_e164: '',
+  };
+}
+
 /** Queue receipts for a paid donation. Called inside the markPaid tx. */
 export async function queueReceiptNotifications(client, donationId) {
   const r = await client.query(
@@ -136,7 +155,7 @@ export async function queueReceiptNotifications(client, donationId) {
  * does not recognise `rawphone` and returns 422 for every send. Checked here
  * so a bad template fails with a clear message instead of a provider error.
  */
-async function sendWhatsApp(n) {
+export async function sendWhatsApp(n) {
   const url = process.env.GALLABOX_API_URL || 'https://server.gallabox.com/devapi/messages/whatsapp';
   const apiKey = process.env.GALLABOX_API_KEY;
   const apiSecret = process.env.GALLABOX_API_SECRET;
@@ -169,7 +188,7 @@ async function sendWhatsApp(n) {
 }
 
 /** Email via Resend. */
-async function sendEmail(n) {
+export async function sendEmail(n) {
   const key = process.env.RESEND_API_KEY;
   if (!key) throw new Error('RESEND_API_KEY is not set');
   const from = process.env.EMAIL_FROM || 'ISKCON Chennai <info@iskconchennai.org>';

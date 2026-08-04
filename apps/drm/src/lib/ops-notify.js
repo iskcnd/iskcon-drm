@@ -167,6 +167,58 @@ export const NOTIFY_OPS = {
   },
 
   /**
+   * Send one real message to an address the operator names.
+   *
+   * The staff app holds no Gallabox or Resend credentials — deliberately, so
+   * that rotating a messaging key touches one service. So this hands the
+   * template to the donation service, which runs the identical code path a
+   * receipt takes and reports back what the provider said.
+   */
+  'notif.test': {
+    cap: CAPABILITY.bulk,
+    async run({ configId, donationId, draft, to }) {
+      const dest = String(to || '').trim();
+      if (!dest) throw new Error('Enter the number or address to send the test to');
+
+      const cfg = draft || (await q('SELECT * FROM notification_config WHERE id=$1', [configId])).rows[0];
+      if (!cfg) throw new Error('Message not found');
+
+      const base = (process.env.DONATE_BASE_URL || '').replace(/\/$/, '');
+      if (!base) {
+        throw new Error(
+          'DONATE_BASE_URL is not set on this service, so there is nowhere to send from. '
+          + 'Set it to the donation site URL in Railway.');
+      }
+      if (!process.env.CRON_KEY) {
+        throw new Error(
+          'CRON_KEY is not set on this service. It must match CRON_KEY on the donation '
+          + 'service — that shared secret is what authorises this call.');
+      }
+
+      let res; let text;
+      try {
+        res = await fetch(`${base}/api/internal/notify-test`, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json', 'x-cron-key': process.env.CRON_KEY },
+          body: JSON.stringify({ config: cfg, donationId, to: dest }),
+        });
+        text = await res.text();
+      } catch (err) {
+        throw new Error(`Could not reach the donation service at ${base}: ${err.message}`);
+      }
+
+      let out;
+      try { out = JSON.parse(text); } catch { out = null; }
+      if (!out) throw new Error(`Donation service returned HTTP ${res.status}: ${text.slice(0, 300)}`);
+      if (res.status === 401) {
+        throw new Error('The donation service rejected CRON_KEY. The two services must share the same value.');
+      }
+      if (out.error && res.status >= 400) throw new Error(out.error);
+      return out;
+    },
+  },
+
+  /**
    * Render exactly what would be sent, without sending.
    *
    * Uses a real donation when one is given, otherwise sample values — so a
