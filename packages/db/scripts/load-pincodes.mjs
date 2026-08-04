@@ -23,6 +23,7 @@ import readline from 'node:readline';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import pg from 'pg';
+import { pgConfig } from './pg-ssl.mjs';
 import { from as copyFrom } from 'pg-copy-streams';
 import { pipeline } from 'node:stream/promises';
 import { Readable } from 'node:stream';
@@ -175,10 +176,7 @@ for (const f of [PINCODES, COURIER]) {
   }
 }
 
-const client = new pg.Client({
-  connectionString: process.env.DATABASE_URL,
-  ssl: { rejectUnauthorized: false },
-});
+const client = new pg.Client(pgConfig());
 await client.connect();
 
 console.log(`Courier areas  ${COURIER}`);

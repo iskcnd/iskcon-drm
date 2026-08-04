@@ -6,11 +6,36 @@ pg.types.setTypeParser(20, (v) => (v === null ? null : parseInt(v, 10)));
 
 const globalForPg = globalThis;
 
+/**
+ * The connection string carries sslmode=require. pg 8 reads that as
+ * verify-full and warns on every boot, because pg 9 will switch it to libpq
+ * semantics — encrypt, but do not check the certificate. Handling it here
+ * means a routine dependency bump cannot quietly weaken the connection.
+ *
+ * PGSSL_VERIFY=true turns certificate checking on. Try it here first: the
+ * staff app going down is an inconvenience, the donation app going down is
+ * lost offerings. Same block in apps/donate/src/lib/db.js and
+ * packages/db/scripts/pg-ssl.mjs — three copies, which packages/core exists to
+ * fix.
+ */
+function connection() {
+  const url = process.env.DATABASE_URL || '';
+  let connectionString = url;
+  try {
+    const u = new URL(url);
+    u.searchParams.delete('sslmode');
+    connectionString = u.toString();
+  } catch { /* let pg report an unparseable URL */ }
+  return {
+    connectionString,
+    ssl: { rejectUnauthorized: String(process.env.PGSSL_VERIFY || '').toLowerCase() === 'true' },
+  };
+}
+
 export const pool =
   globalForPg._drmPool ||
   new pg.Pool({
-    connectionString: process.env.DATABASE_URL,
-    ssl: { rejectUnauthorized: false },
+    ...connection(),
     max: 8,
     idleTimeoutMillis: 30_000,
     connectionTimeoutMillis: 10_000,

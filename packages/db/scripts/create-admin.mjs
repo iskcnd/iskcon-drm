@@ -8,6 +8,7 @@
 // Roles: super_admin | module_manager | data_entry | view_only
 
 import pg from 'pg';
+import { pgConfig } from './pg-ssl.mjs';
 import bcrypt from 'bcryptjs';
 
 const [email, name, password, role = 'super_admin'] = process.argv.slice(2);
@@ -29,10 +30,7 @@ if (!process.env.DATABASE_URL) {
   process.exit(1);
 }
 
-const client = new pg.Client({
-  connectionString: process.env.DATABASE_URL,
-  ssl: { rejectUnauthorized: false },
-});
+const client = new pg.Client(pgConfig());
 await client.connect();
 
 const hash = await bcrypt.hash(password, 12);

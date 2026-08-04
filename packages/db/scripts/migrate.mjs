@@ -8,6 +8,7 @@ import { readdir, readFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 import pg from 'pg';
+import { pgConfig } from './pg-ssl.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const dir = path.join(here, '..', 'migrations');
@@ -17,10 +18,7 @@ if (!process.env.DATABASE_URL) {
   process.exit(1);
 }
 
-const client = new pg.Client({
-  connectionString: process.env.DATABASE_URL,
-  ssl: { rejectUnauthorized: false },
-});
+const client = new pg.Client(pgConfig());
 
 await client.connect();
 
