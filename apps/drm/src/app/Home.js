@@ -48,6 +48,7 @@ const MODULES = [
 
 export default function Home({ user }) {
   const rank = RANK[user.role] ?? 0;
+  const first = (user.name || '').trim().split(/\s+/)[0] || 'devotee';
 
   return (
     <div className="home">
@@ -56,6 +57,7 @@ export default function Home({ user }) {
       <div className="content home-inner">
         {/* The masthead lives in the nav bar. Repeating the logo and the app
             name here only pushed the verse below the fold. */}
+        <p className="home-greet"> Hare Kṛṣṇa🙏🏼, {first}</p>
         <section className="verse" aria-label={VERSE.source}>
           <div className="verse-deva" lang="sa">
             {VERSE.devanagari.map((l) => <div key={l}>{l}</div>)}
