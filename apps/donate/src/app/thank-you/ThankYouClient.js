@@ -9,7 +9,9 @@ const Conch = () => (
   </svg>
 );
 
-export default function ThankYouClient({ status, receipt, token, donation, gateway, final }) {
+export default function ThankYouClient({
+  status, receipt, token, donation, gateway, final, orderRef, txn,
+}) {
   const ok = status === 'success';
   const [petals, setPetals] = useState([]);
   const [retrying, setRetrying] = useState(false);
@@ -57,6 +59,33 @@ export default function ThankYouClient({ status, receipt, token, donation, gatew
             <br />Form 10BE (80G certificate) follows as per Income-tax rules.
           </div>
           <button className="btn-gold" onClick={share}>Share this joy on WhatsApp 💬</button>
+        </>
+      ) : status === 'reconciling' ? (
+        /*
+         * The gateway confirmed the payment and its signature verified — the
+         * money left the donor's account. Something on our side then failed to
+         * record it. Telling this donor "nothing was charged" is not a
+         * reassurance, it is a false statement about their bank account, and
+         * it is what they will quote when they call.
+         */
+        <>
+          <h1>We have your offering</h1>
+          <p>
+            Your payment went through. A problem on our side is delaying the
+            receipt, and the temple office has been alerted — your receipt will
+            follow by WhatsApp and email.
+          </p>
+          {(orderRef || txn) ? (
+            <div className="receiptbox">
+              Keep this for reference:
+              {orderRef ? <><br />Order <b>{orderRef}</b></> : null}
+              {txn ? <><br />Transaction <b>{txn}</b></> : null}
+            </div>
+          ) : null}
+          <p style={{ marginTop: 10 }}>
+            Nothing more is needed from you. If you would rather speak to
+            someone, call the temple on 6385042108.
+          </p>
         </>
       ) : (
         <>

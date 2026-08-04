@@ -279,7 +279,13 @@ export async function recordUnreconciled(gateway, payload, error) {
   await q(
     `INSERT INTO unreconciled_payment (gateway, order_ref, gateway_txn_id, amount, raw, error)
      VALUES ($1,$2,$3,$4,$5,$6)
-     ON CONFLICT (gateway, gateway_txn_id) DO UPDATE
+     -- uq_unreconciled is a PARTIAL index. Postgres will not match a partial
+     -- index unless the same predicate is stated here, so without this WHERE
+     -- the statement fails with "no unique or exclusion constraint matching
+     -- the ON CONFLICT specification" — and the last-resort record of a real
+     -- payment is lost. Which is exactly what happened.
+     ON CONFLICT (gateway, gateway_txn_id) WHERE gateway_txn_id IS NOT NULL
+     DO UPDATE
        SET error = EXCLUDED.error, seen_count = unreconciled_payment.seen_count + 1`,
     [
       gateway,

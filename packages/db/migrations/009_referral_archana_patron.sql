@@ -8,7 +8,25 @@
 -- Format changed from 'ICC-2026-000001' to a plain number, matching the format
 -- donors and the accounts office already recognise from Zoho. A year in the
 -- number would imply it resets annually, which it must not.
-SELECT setval('receipt_seq', GREATEST(200000, (SELECT last_value FROM receipt_seq)), false);
+-- The next receipt number must be strictly greater than every number already
+-- issued, on a fresh database and on every re-run of this file.
+--
+-- This previously read GREATEST(200000, last_value) with is_called = false,
+-- which re-issues last_value — the number most recently handed out. Every
+-- `npm run migrate` therefore pointed the sequence back at a receipt that
+-- already existed, and the next real payment died on
+-- donation_receipt_no_key. The donor was charged and told nothing had been.
+--
+-- max(receipt_no) is the authority, not the sequence's own position: the
+-- sequence can be behind the table but never ahead of it.
+SELECT setval('receipt_seq',
+              GREATEST(
+                200000,
+                COALESCE((SELECT max(receipt_no::bigint) FROM donation
+                           WHERE receipt_no ~ '^[0-9]+$'), 0) + 1,
+                (SELECT CASE WHEN is_called THEN last_value + 1 ELSE last_value END
+                   FROM receipt_seq)),
+              false);
 
 CREATE OR REPLACE FUNCTION next_receipt_no() RETURNS text
 LANGUAGE sql VOLATILE AS
