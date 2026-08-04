@@ -39,10 +39,12 @@ CREATE INDEX IF NOT EXISTS idx_post_offices_pincode ON post_offices (pincode);
 COMMENT ON TABLE post_offices IS
   'India Post PIN code directory. Reference data, not devotee data: no PII, safe to bulk load and to expose through the read-only API role.';
 
--- One PIN can carry a head office (HO), sub office (SO) and several branch
--- offices (BO). For an address we want the one a person would recognise, and
--- that is the head office where there is one. Also prefers a row that actually
--- carries coordinates — a lot of BO rows have none.
+-- One PIN can carry a head office (HO), a post/sub office (PO) and many branch
+-- offices (BO) — those three are the whole vocabulary in the India Post file,
+-- 811 / 24,546 / 140,270 rows respectively. For an address we want the one a
+-- person would recognise, so head office first, then PO, then BO. Rows with
+-- coordinates outrank rows without, because a lot of BO rows have none and a
+-- blank latitude is what Zoho ends up storing.
 CREATE OR REPLACE FUNCTION resolve_pincode(p_pincode text)
 RETURNS TABLE (office_name text, district text, state text, latitude numeric, longitude numeric)
 LANGUAGE sql STABLE AS $fn$
@@ -50,7 +52,8 @@ LANGUAGE sql STABLE AS $fn$
     FROM post_offices po
    WHERE po.pincode = NULLIF(regexp_replace(COALESCE(p_pincode,''), '\D', '', 'g'), '')::int
    ORDER BY (po.latitude IS NULL),
-            CASE upper(COALESCE(po.office_type,'')) WHEN 'HO' THEN 1 WHEN 'SO' THEN 2 ELSE 3 END,
+            CASE upper(COALESCE(po.office_type,''))
+              WHEN 'HO' THEN 1 WHEN 'PO' THEN 2 WHEN 'SO' THEN 2 ELSE 3 END,
             po.id
    LIMIT 1;
 $fn$;

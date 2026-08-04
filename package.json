@@ -2,7 +2,7 @@
   "name": "iskcon-platform",
   "version": "0.1.0",
   "private": true,
-  "description": "ISKCON Chennai platform — one Neon database, several small apps on their own subdomains",
+  "description": "ISKCON Chennai platform \u2014 one Neon database, several small apps on their own subdomains",
   "workspaces": [
     "apps/*",
     "packages/*"
@@ -13,15 +13,13 @@
   "scripts": {
     "migrate": "npm run migrate -w @iskcon/db",
     "create-admin": "npm run create-admin -w @iskcon/db",
-
+    "load-pincodes": "npm run load-pincodes -w @iskcon/db",
     "dev:drm": "npm run dev -w @iskcon/drm",
     "build:drm": "npm run build -w @iskcon/drm",
     "start:drm": "npm run start -w @iskcon/drm",
-
     "dev:donate": "npm run dev -w @iskcon/donate",
     "build:donate": "npm run build -w @iskcon/donate",
     "start:donate": "npm run start -w @iskcon/donate",
-
     "build": "npm run build:drm",
     "start": "npm run start:drm"
   }

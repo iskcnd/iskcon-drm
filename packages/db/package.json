@@ -6,10 +6,12 @@
   "description": "Shared schema migrations and setup scripts. Every app on the platform reads the same Neon database.",
   "scripts": {
     "migrate": "node scripts/migrate.mjs",
-    "create-admin": "node scripts/create-admin.mjs"
+    "create-admin": "node scripts/create-admin.mjs",
+    "load-pincodes": "node scripts/load-pincodes.mjs"
   },
   "dependencies": {
     "bcryptjs": "2.4.3",
-    "pg": "8.13.1"
+    "pg": "8.13.1",
+    "pg-copy-streams": "^6.0.6"
   }
 }
