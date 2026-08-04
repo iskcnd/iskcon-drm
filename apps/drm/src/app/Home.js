@@ -54,11 +54,10 @@ export default function Home({ user }) {
     <div className="home">
       <MotifField />
 
-      <div className="content verse-tr">
+      <div className="content home-inner">
         {/* The masthead lives in the nav bar. Repeating the logo and the app
             name here only pushed the verse below the fold. */}
-        <p> Hare Kṛṣṇa🙏🏼, {first}</p>
-		<p></p>
+        <p className="home-greet"> Hare Kṛṣṇa🙏🏼, {first}</br></p>
         <section className="verse" aria-label={VERSE.source}>
           <div className="verse-deva" lang="sa">
             {VERSE.devanagari.map((l) => <div key={l}>{l}</div>)}
