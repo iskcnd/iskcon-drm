@@ -2,6 +2,30 @@
 import { useEffect, useState } from 'react';
 import { retryNextGateway } from '@/lib/launch';
 
+/**
+ * Photographs from the temple's own media library on iskconchennai.org.
+ *
+ * Hotlinked rather than copied because they are the temple's files on the
+ * temple's domain, and a copy would drift the day the deities are dressed
+ * differently. Both are decorative: onError removes the element, so a moved
+ * or renamed file leaves a slightly plainer page rather than the broken-image
+ * icon that greeted us on the staff login.
+ */
+const TEMPLE = 'https://iskconchennai.org/wp-content/uploads/2024/08';
+const drop = (e) => { e.currentTarget.style.display = 'none'; };
+
+const Deity = () => (
+  // eslint-disable-next-line @next/next/no-img-element
+  <img className="bless-deity" src={`${TEMPLE}/Radha-Krishna.jpg`}
+    alt="Sri Sri Radha Krishna, ISKCON Chennai" onError={drop} />
+);
+
+/** The flower rule that separates every section of the temple's website. */
+const FlowerLine = () => (
+  // eslint-disable-next-line @next/next/no-img-element
+  <img className="flower-line" src={`${TEMPLE}/flower-line.png`} alt="" aria-hidden="true" onError={drop} />
+);
+
 const Conch = () => (
   <svg className="conch" viewBox="0 0 80 90" aria-hidden="true">
     <path d="M40 6 C58 10 66 26 64 44 C62 62 52 74 40 84 C28 74 18 62 16 44 C14 26 22 10 40 6Z" fill="#FDF6E3" stroke="#C9A227" strokeWidth="2" />
@@ -46,7 +70,9 @@ export default function ThankYouClient({
         <span key={p.id} className="petal" aria-hidden="true"
           style={{ left: p.left + '%', animationDuration: p.dur + 's', animationDelay: p.delay + 's' }}>{p.glyph}</span>
       ))}
-      <Conch />
+      <div className="bless-inner">
+      <Deity />
+      <FlowerLine />
       <div className="diya" aria-hidden="true">🪔</div>
       {ok ? (
         <>
@@ -99,7 +125,9 @@ export default function ThankYouClient({
           ) : null}
         </>
       )}
-      <p style={{ marginTop: 14 }}><a href="/">← Back to sevas</a></p>
+      <FlowerLine />
+      <p style={{ marginTop: 4 }}><a href="/">← Back to sevas</a></p>
+      </div>
     </div>
   );
 }

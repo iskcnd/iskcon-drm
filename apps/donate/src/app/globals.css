@@ -172,18 +172,45 @@ header.site{position:sticky;top:0;z-index:50;background:linear-gradient(180deg,v
 .btn-pay[disabled]{opacity:.6;cursor:wait}
 .secure-line{text-align:center;font-size:11.5px;color:var(--ink-soft);margin-top:10px}
 
-.bless{position:fixed;inset:0;z-index:200;background:radial-gradient(700px 500px at 50% 20%,#6b2018,#2a0809 75%);
-  display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;color:var(--ivory);padding:30px}
-.diya{font-size:64px;animation:glow 2s infinite alternate}
-@keyframes glow{from{filter:drop-shadow(0 0 6px rgba(231,190,69,.5))}to{filter:drop-shadow(0 0 26px rgba(231,190,69,.95))}}
-.bless .conch{width:60px;margin-bottom:6px;opacity:.9}
-.bless h1{font-family:var(--serif);font-size:30px;margin:14px 0 8px;color:var(--gold-pale)}
-.bless .b-name{font-family:var(--serif);font-size:20px;font-style:italic;margin-bottom:14px}
-.bless p{font-size:14px;line-height:1.6;opacity:.95;max-width:340px;margin-bottom:8px}
-.bless .receipt-chip{background:rgba(255,255,255,.12);border:1px solid rgba(231,190,69,.5);border-radius:14px;
-  padding:10px 18px;font-size:12.5px;margin:16px 0 22px;line-height:1.6}
-.bless a{color:var(--gold-pale)}
-.petal{position:absolute;top:-30px;font-size:18px;animation:fall linear infinite;opacity:.85}
+/* ------------------------------------------------- offering confirmed page
+   Was a near-black maroon wash — the one screen in the whole donation flow
+   that did not look like the temple's own site. It now uses the same ivory,
+   gold and maroon as everything else, so a donor never feels handed off to
+   a different product at the moment they part with money. */
+.bless{position:fixed;inset:0;z-index:200;overflow-y:auto;
+  background:
+    radial-gradient(620px 420px at 50% -6%, #FFF6DF 0%, rgba(255,246,223,0) 70%),
+    var(--ivory);
+  display:flex;flex-direction:column;align-items:center;justify-content:center;
+  text-align:center;color:var(--ink);padding:34px 24px 44px}
+.bless::before{content:"";position:absolute;inset:0 0 auto;height:6px;
+  background:linear-gradient(90deg,var(--gold),var(--marigold),var(--gold-bright),var(--gold))}
+.bless-inner{position:relative;z-index:1;max-width:400px;width:100%;
+  display:flex;flex-direction:column;align-items:center}
+
+/* The temple's own deity photograph. A real image of Their Lordships says
+   more about where the money went than any icon we could draw. */
+.bless-deity{width:132px;height:132px;border-radius:50%;object-fit:cover;
+  border:3px solid var(--gold);box-shadow:0 10px 30px rgba(87,22,23,.22);
+  margin-bottom:6px;background:var(--cream)}
+/* The flower divider used on every section of iskconchennai.org. */
+.flower-line{display:block;width:190px;max-width:70%;height:auto;margin:14px auto;opacity:.85}
+
+.diya{font-size:52px;animation:glow 2s infinite alternate;margin-top:2px}
+@keyframes glow{from{filter:drop-shadow(0 0 5px rgba(201,162,39,.45))}to{filter:drop-shadow(0 0 20px rgba(231,190,69,.85))}}
+.bless .conch{width:48px;margin-bottom:2px;opacity:.85}
+.bless h1{font-family:var(--serif);font-size:31px;line-height:1.2;margin:8px 0 8px;color:var(--maroon)}
+.bless .b-name{font-family:var(--serif);font-size:20px;font-style:italic;color:var(--gold-ink);margin-bottom:14px}
+.bless p{font-size:14px;line-height:1.65;color:var(--ink-soft);max-width:340px;margin-bottom:8px}
+.bless .receipt-chip,.bless .receiptbox{background:var(--cream);border:1px solid var(--gold-pale);
+  border-radius:14px;padding:12px 18px;font-size:12.5px;color:var(--ink);
+  margin:16px 0 20px;line-height:1.7;box-shadow:0 2px 10px rgba(87,22,23,.06)}
+.bless .receiptbox b{color:var(--maroon);font-variant-numeric:tabular-nums}
+.bless a{color:var(--maroon);text-decoration-color:var(--gold)}
+.bless .btn-gold{margin-top:4px}
+/* Marigold petals read as celebration on ivory only if they are stronger
+   than they were on the dark ground. */
+.petal{position:absolute;top:-30px;font-size:18px;animation:fall linear infinite;opacity:.95}
 @keyframes fall{to{transform:translateY(110vh) rotate(300deg)}}
 
 .trust{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;padding:14px 10px 6px;list-style:none}
