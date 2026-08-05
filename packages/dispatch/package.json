@@ -9,10 +9,13 @@
     ".": "./src/index.js",
     "./label": "./src/label.js",
     "./barcode": "./src/barcode.js",
-    "./courier": "./src/courier.js"
+    "./courier": "./src/courier.js",
+    "./exports": "./src/exports.js",
+    "./mailmerge": "./src/mailmerge.js"
   },
   "dependencies": {
     "pdfkit": "^0.19.1",
-    "exceljs": "^4.4.0"
+    "exceljs": "^4.4.0",
+    "jszip": "^3.10.1"
   }
 }
