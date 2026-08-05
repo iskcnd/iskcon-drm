@@ -22,6 +22,7 @@
     "start:donate": "npm run start -w @iskcon/donate",
     "build": "npm run build:drm",
     "start": "npm run start:drm",
-    "import-donor-master": "npm run import-donor-master -w @iskcon/db --"
+    "import-donor-master": "npm run import-donor-master -w @iskcon/db --",
+    "dedupe-people": "npm run dedupe-people -w @iskcon/db --"
   }
 }

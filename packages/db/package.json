@@ -8,7 +8,8 @@
     "migrate": "node scripts/migrate.mjs",
     "create-admin": "node scripts/create-admin.mjs",
     "load-pincodes": "node scripts/load-pincodes.mjs",
-    "import-donor-master": "node scripts/import-donor-master.mjs"
+    "import-donor-master": "node scripts/import-donor-master.mjs",
+    "dedupe-people": "node scripts/dedupe-people.mjs"
   },
   "dependencies": {
     "bcryptjs": "2.4.3",
