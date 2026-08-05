@@ -146,13 +146,68 @@ if (APPLY) {
     console.error('The CSV needs keep_id, drop_id and MERGE columns.');
     process.exit(1);
   }
-  const wanted = [];
+  const marked = [];
   for (const line of lines) {
     // Values here are ids and a yes/no, none of which contain commas.
     const c = line.split(',').map((x) => x.trim().replace(/^"|"$/g, ''));
-    if (/^(y|yes|1|true|merge)$/i.test(c[iMerge] || '')) wanted.push([c[iKeep], c[iDrop]]);
+    if (/^(y|yes|1|true|merge)$/i.test(c[iMerge] || '')) marked.push([c[iKeep], c[iDrop]]);
   }
-  console.log(`${lines.length} rows in file, ${wanted.length} marked to merge.`);
+
+  /*
+   * Marked pairs are joined into groups before anything is merged.
+   *
+   * Three records of one devotee produce three rows: (A,B), (A,C), (B,C).
+   * Marking all three is the natural thing to do, and applying them in order
+   * would try to merge C into B after both had already gone into A — which
+   * raises, and because the whole apply is one transaction, nothing at all
+   * would merge. The operator would have marked the file correctly and got
+   * an error for their trouble.
+   *
+   * So the pairs are treated as "these two are the same devotee" rather than
+   * as instructions. Union-find joins them up; each group keeps the lowest
+   * person_no, exactly as the exact pass does; everyone else merges into it.
+   * Marking all three rows, or only two, now gives the same correct result.
+   */
+  const parent = new Map();
+  const find = (x) => {
+    if (!parent.has(x)) parent.set(x, x);
+    while (parent.get(x) !== x) { parent.set(x, parent.get(parent.get(x))); x = parent.get(x); }
+    return x;
+  };
+  const union = (a, b) => { const ra = find(a); const rb = find(b); if (ra !== rb) parent.set(rb, ra); };
+  for (const [a, b] of marked) union(a, b);
+
+  // person_no for every id involved, so the survivor is chosen on the same
+  // rule as the exact pass rather than on CSV row order.
+  const ids = [...new Set(marked.flat())];
+  const { rows: known } = await client.query(
+    'SELECT id, person_no, full_name FROM person WHERE id = ANY($1::uuid[])', [ids]);
+  const byId = new Map(known.map((r) => [r.id, r]));
+  const missing = ids.filter((i) => !byId.has(i));
+
+  const groups = new Map();
+  for (const id of ids) {
+    if (!byId.has(id)) continue;
+    const root = find(id);
+    if (!groups.has(root)) groups.set(root, []);
+    groups.get(root).push(byId.get(id));
+  }
+
+  const wanted = [];
+  for (const members of groups.values()) {
+    if (members.length < 2) continue;
+    members.sort((a, b) => Number(a.person_no) - Number(b.person_no));
+    const [keep, ...rest] = members;
+    for (const r of rest) wanted.push([keep.id, r.id]);
+  }
+
+  console.log(`${lines.length} rows in file, ${marked.length} marked.`);
+  console.log(`  ${groups.size} devotee(s) after grouping, ${wanted.length} record(s) to merge.`);
+  const multi = [...groups.values()].filter((m) => m.length > 2).length;
+  if (multi) console.log(`  ${multi} group(s) of three or more were joined up.`);
+  if (missing.length) {
+    console.log(`  ${missing.length} id(s) in the file no longer exist — already merged. Ignored.`);
+  }
   if (!COMMIT) {
     console.log('Dry run. Re-run with --commit to apply.');
     await client.end(); process.exit(0);
@@ -217,11 +272,32 @@ if (FUZZY || CSV) {
 }
 
 if (CSV) {
-  const head = ['MERGE', 'why', 'keep_person_no', 'keep_name', 'keep_gifts', 'keep_total',
+  // A group number so three records of one devotee are visibly one thing
+  // rather than three unrelated rows scattered through the file. Sorting by
+  // it puts them together.
+  const gp = new Map();
+  const gfind = (x) => {
+    if (!gp.has(x)) gp.set(x, x);
+    while (gp.get(x) !== x) { gp.set(x, gp.get(gp.get(x))); x = gp.get(x); }
+    return x;
+  };
+  for (const f of fuzzy) {
+    const a = gfind(f.keep.id); const b = gfind(f.drop.id);
+    if (a !== b) gp.set(b, a);
+  }
+  const groupNo = new Map();
+  for (const f of fuzzy) {
+    const root = gfind(f.keep.id);
+    if (!groupNo.has(root)) groupNo.set(root, groupNo.size + 1);
+  }
+  fuzzy.sort((a, b) => groupNo.get(gfind(a.keep.id)) - groupNo.get(gfind(b.keep.id)));
+
+  const head = ['MERGE', 'group', 'why', 'keep_person_no', 'keep_name', 'keep_gifts', 'keep_total',
     'drop_person_no', 'drop_name', 'drop_gifts', 'drop_total',
     'mobile', 'keep_email', 'drop_email', 'keep_id', 'drop_id'];
   const body = fuzzy.map((f) => [
-    '', f.why, f.keep.person_no, f.keep.full_name, f.keep.gifts, f.keep.total,
+    '', groupNo.get(gfind(f.keep.id)), f.why,
+    f.keep.person_no, f.keep.full_name, f.keep.gifts, f.keep.total,
     f.drop.person_no, f.drop.full_name, f.drop.gifts, f.drop.total,
     f.keep.mobile_e164, f.keep.email, f.drop.email, f.keep.id, f.drop.id,
   ].map(csvCell).join(','));
