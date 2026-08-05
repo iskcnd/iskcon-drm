@@ -14,6 +14,7 @@ const ITEMS = [
   { href: '/donations', label: 'Donations', minRank: 0 },
   { href: '/seva', label: 'Seva ops', minRank: 0 },
   { href: '/team', label: 'Team', minRank: 0 },
+  { href: '/dispatch', label: 'Dispatch', minRank: 0 },
   { href: '/import', label: 'Import', minRank: 2 },
   { href: '/insights', label: 'Insights', minRank: 0 },
 ];

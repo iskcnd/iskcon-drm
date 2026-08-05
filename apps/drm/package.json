@@ -2,7 +2,7 @@
   "name": "@iskcon/drm",
   "version": "0.1.0",
   "private": true,
-  "description": "Devotee Relationship Management — master records, categories, donations, imports, insights",
+  "description": "Devotee Relationship Management \u2014 master records, categories, donations, imports, insights",
   "scripts": {
     "dev": "next dev",
     "build": "next build",
@@ -15,6 +15,7 @@
     "next": "^16.2.12",
     "pg": "8.13.1",
     "react": "^19.0.0",
-    "react-dom": "^19.0.0"
+    "react-dom": "^19.0.0",
+    "@iskcon/dispatch": "*"
   }
 }
