@@ -18,9 +18,26 @@
  *            and total rupees unchanged to the paisa, zero orphans.
  *
  *   fuzzy  — same mobile, names that look like the same person. NEVER merged
- *            automatically. It writes a CSV with one row per candidate pair
- *            and a MERGE column for you to fill in. Nothing happens until you
- *            hand the file back with --apply.
+ *            automatically. It writes a CSV and nothing happens until the
+ *            file comes back with --apply.
+ *
+ * THE REVIEW FILE IS ONE ROW PER RECORD, NOT PER PAIR.
+ *
+ * The first version listed candidate pairs and asked "should these two
+ * merge?". That is not what the temple knows. Four records of one devotee
+ * produced four pair-rows, there was no way to say which record was the real
+ * one, and no way at all to say "the right name is Manoj Chandani and the
+ * right email is manojchandani@hotmail.com" when those sat on different rows.
+ *
+ * Now each record is its own row, rows sit together under a group number, and
+ * the columns to fill in are:
+ *
+ *   KEEP         y on the ONE record that is real. Everything else in the
+ *                group merges into it. No KEEP means the group is left alone.
+ *   EXCLUDE      y on a record that is a different person after all.
+ *   final_name   pre-filled, editable. Applied to the survivor after merging.
+ *   final_email  same. merge_person only fills blanks, so replacing a value
+ *                the survivor already has must happen here.
  *
  * Every merge is logged with a full snapshot of the record removed and the id
  * of every donation moved, so unmerge_person(log_id) puts it all back.
@@ -107,6 +124,28 @@ function lev(a, b) {
   return (ra <= 1 && rb <= 1) ? Math.max(ra, rb) : 9;
 }
 
+/**
+ * A real CSV reader, because the file comes back from Excel. Names contain
+ * commas ("Kumar, S"), Excel quotes them, and splitting on commas would tear
+ * a record in half and merge the wrong devotee.
+ */
+function parseCsv(text) {
+  const out = []; let row = []; let cell = ''; let q = false;
+  const t = text.replace(/^\uFEFF/, '');
+  for (let i = 0; i < t.length; i += 1) {
+    const c = t[i];
+    if (q) {
+      if (c === '"') { if (t[i + 1] === '"') { cell += '"'; i += 1; } else q = false; }
+      else cell += c;
+    } else if (c === '"') q = true;
+    else if (c === ',') { row.push(cell); cell = ''; }
+    else if (c === '\n') { row.push(cell); out.push(row); row = []; cell = ''; }
+    else if (c !== '\r') cell += c;
+  }
+  if (cell !== '' || row.length) { row.push(cell); out.push(row); }
+  return out.filter((r) => r.some((x) => String(x).trim() !== ''));
+}
+
 const csvCell = (v) => {
   const s = v === null || v === undefined ? '' : String(v);
   return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
@@ -137,97 +176,106 @@ for (const p of people) {
 if (APPLY) {
   try { await stat(APPLY); } catch { console.error(`Not found: ${APPLY}`); process.exit(1); }
   const text = await readFile(APPLY, 'utf8');
-  const lines = text.split(/\r?\n/).filter((l) => l.trim());
-  const head = lines.shift().split(',').map((h) => h.trim().toLowerCase().replace(/^"|"$/g, ''));
-  const iKeep = head.indexOf('keep_id');
-  const iDrop = head.indexOf('drop_id');
-  const iMerge = head.indexOf('merge');
-  if (iKeep < 0 || iDrop < 0 || iMerge < 0) {
-    console.error('The CSV needs keep_id, drop_id and MERGE columns.');
+  const rows = parseCsv(text);
+  if (!rows.length) { console.error('The file is empty.'); process.exit(1); }
+  const head = rows.shift().map((h) => h.trim().toLowerCase());
+  const col = (n) => head.indexOf(n);
+  const iGroup = col('group'); const iKeep = col('keep'); const iExclude = col('exclude');
+  const iId = col('person_id'); const iName = col('final_name'); const iEmail = col('final_email');
+  if (iGroup < 0 || iKeep < 0 || iId < 0) {
+    console.error('The CSV needs group, KEEP and person_id columns.');
     process.exit(1);
   }
-  const marked = [];
-  for (const line of lines) {
-    // Values here are ids and a yes/no, none of which contain commas.
-    const c = line.split(',').map((x) => x.trim().replace(/^"|"$/g, ''));
-    if (/^(y|yes|1|true|merge)$/i.test(c[iMerge] || '')) marked.push([c[iKeep], c[iDrop]]);
-  }
 
-  /*
-   * Marked pairs are joined into groups before anything is merged.
-   *
-   * Three records of one devotee produce three rows: (A,B), (A,C), (B,C).
-   * Marking all three is the natural thing to do, and applying them in order
-   * would try to merge C into B after both had already gone into A — which
-   * raises, and because the whole apply is one transaction, nothing at all
-   * would merge. The operator would have marked the file correctly and got
-   * an error for their trouble.
-   *
-   * So the pairs are treated as "these two are the same devotee" rather than
-   * as instructions. Union-find joins them up; each group keeps the lowest
-   * person_no, exactly as the exact pass does; everyone else merges into it.
-   * Marking all three rows, or only two, now gives the same correct result.
-   */
-  const parent = new Map();
-  const find = (x) => {
-    if (!parent.has(x)) parent.set(x, x);
-    while (parent.get(x) !== x) { parent.set(x, parent.get(parent.get(x))); x = parent.get(x); }
-    return x;
-  };
-  const union = (a, b) => { const ra = find(a); const rb = find(b); if (ra !== rb) parent.set(rb, ra); };
-  for (const [a, b] of marked) union(a, b);
+  const yes = (v) => /^(y|yes|1|true|x)$/i.test((v || '').trim());
 
-  // person_no for every id involved, so the survivor is chosen on the same
-  // rule as the exact pass rather than on CSV row order.
-  const ids = [...new Set(marked.flat())];
-  const { rows: known } = await client.query(
-    'SELECT id, person_no, full_name FROM person WHERE id = ANY($1::uuid[])', [ids]);
-  const byId = new Map(known.map((r) => [r.id, r]));
-  const missing = ids.filter((i) => !byId.has(i));
-
+  // One row per person record. A group is one devotee; the row marked KEEP
+  // survives and the rest merge into it. Nothing is inferred: a group with no
+  // KEEP is skipped, because guessing which record to keep is the one thing
+  // this file exists to stop us doing.
   const groups = new Map();
-  for (const id of ids) {
-    if (!byId.has(id)) continue;
-    const root = find(id);
-    if (!groups.has(root)) groups.set(root, []);
-    groups.get(root).push(byId.get(id));
+  for (const r of rows) {
+    const g = (r[iGroup] || '').trim();
+    const id = (r[iId] || '').trim();
+    if (!g || !id) continue;
+    if (!groups.has(g)) groups.set(g, []);
+    groups.get(g).push({
+      id,
+      keep: yes(r[iKeep]),
+      exclude: iExclude >= 0 && yes(r[iExclude]),
+      finalName: iName >= 0 ? (r[iName] || '').trim() : '',
+      finalEmail: iEmail >= 0 ? (r[iEmail] || '').trim() : '',
+    });
   }
 
-  const wanted = [];
-  for (const members of groups.values()) {
-    if (members.length < 2) continue;
-    members.sort((a, b) => Number(a.person_no) - Number(b.person_no));
-    const [keep, ...rest] = members;
-    for (const r of rest) wanted.push([keep.id, r.id]);
+  const plan = []; const problems = [];
+  let skipped = 0; let excluded = 0;
+  for (const [g, members] of groups) {
+    const live = members.filter((m) => !m.exclude);
+    excluded += members.length - live.length;
+    const keepers = live.filter((m) => m.keep);
+    if (keepers.length === 0) { skipped += 1; continue; }
+    if (keepers.length > 1) {
+      problems.push(`group ${g}: ${keepers.length} rows marked KEEP — mark exactly one`);
+      continue;
+    }
+    const keep = keepers[0];
+    const drops = live.filter((m) => m !== keep);
+    if (!drops.length) { skipped += 1; continue; }
+    plan.push({ group: g, keep, drops });
   }
 
-  console.log(`${lines.length} rows in file, ${marked.length} marked.`);
-  console.log(`  ${groups.size} devotee(s) after grouping, ${wanted.length} record(s) to merge.`);
-  const multi = [...groups.values()].filter((m) => m.length > 2).length;
-  if (multi) console.log(`  ${multi} group(s) of three or more were joined up.`);
-  if (missing.length) {
-    console.log(`  ${missing.length} id(s) in the file no longer exist — already merged. Ignored.`);
+  if (problems.length) {
+    console.error('Cannot apply:');
+    for (const p of problems) console.error(`  ${p}`);
+    await client.end(); process.exit(1);
   }
+
+  const merges = plan.reduce((n, p) => n + p.drops.length, 0);
+  const renames = plan.filter((p) => p.keep.finalName || p.keep.finalEmail).length;
+  console.log(`${rows.length} rows, ${groups.size} groups.`);
+  console.log(`  ${plan.length} group(s) to merge — ${merges} record(s) folded in`);
+  console.log(`  ${skipped} group(s) skipped (no KEEP marked)`);
+  if (excluded) console.log(`  ${excluded} row(s) excluded as a different person`);
+  if (renames) console.log(`  ${renames} survivor(s) will have name/email set from the file`);
+
   if (!COMMIT) {
-    console.log('Dry run. Re-run with --commit to apply.');
+    console.log('\nDry run. Nothing was written. Re-run with --commit to apply.');
     await client.end(); process.exit(0);
   }
-  let done = 0;
+
+  let done = 0; let fixed = 0;
   await client.query('BEGIN');
   try {
-    for (const [keep, drop] of wanted) {
-      await client.query('SELECT merge_person($1,$2,$3)', [keep, drop, 'dedupe: reviewed by hand']);
-      done += 1;
+    for (const p of plan) {
+      for (const d of p.drops) {
+        await client.query('SELECT merge_person($1,$2,$3)',
+          [p.keep.id, d.id, `dedupe: reviewed, group ${p.group}`]);
+        done += 1;
+      }
+      // After merging. merge_person only fills blanks, so a correction that
+      // REPLACES the survivor's name or email has to be applied afterwards —
+      // that is the whole point of the two editable columns.
+      if (p.keep.finalName || p.keep.finalEmail) {
+        const r = await client.query(
+          `UPDATE person
+              SET full_name = COALESCE(NULLIF($2,''), full_name),
+                  email     = COALESCE(NULLIF($3,'')::citext, email)
+            WHERE id = $1`,
+          [p.keep.id, p.keep.finalName, p.keep.finalEmail]);
+        fixed += r.rowCount;
+      }
     }
     await client.query('COMMIT');
   } catch (err) {
     await client.query('ROLLBACK');
-    console.error(`Failed after ${done}, nothing changed:`, err.message);
+    console.error(`\nFailed after ${done} merges, nothing changed:`, err.message);
     await client.end(); process.exit(1);
   }
-  console.log(`Merged ${done}.`);
+  console.log(`\nMerged ${done} record(s) into ${plan.length} devotee(s); ${fixed} name/email correction(s).`);
   await client.end(); process.exit(0);
 }
+
 
 // -------------------------------------------------------------- exact pass
 const exact = [];
@@ -272,40 +320,71 @@ if (FUZZY || CSV) {
 }
 
 if (CSV) {
-  // A group number so three records of one devotee are visibly one thing
-  // rather than three unrelated rows scattered through the file. Sorting by
-  // it puts them together.
+  /*
+   * ONE ROW PER RECORD, not per pair.
+   *
+   * The first version asked "should these two merge?" — which is not what the
+   * temple knows. What Divyarupa knows is "this is the real Manoj Chandani,
+   * and this is his correct name and email". Four pair-rows for one devotee
+   * made that impossible to express, and left the survivor picked by
+   * person_no whether or not it was the right record.
+   *
+   * So: every record in a cluster gets its own row, the rows sit together
+   * under a group number, and the operator marks KEEP on the one that is
+   * real. final_name and final_email are pre-filled and editable, because the
+   * right name is sometimes on the wrong record.
+   */
   const gp = new Map();
   const gfind = (x) => {
     if (!gp.has(x)) gp.set(x, x);
     while (gp.get(x) !== x) { gp.set(x, gp.get(gp.get(x))); x = gp.get(x); }
     return x;
   };
+  const why = new Map();
   for (const f of fuzzy) {
     const a = gfind(f.keep.id); const b = gfind(f.drop.id);
     if (a !== b) gp.set(b, a);
+    why.set(f.drop.id, f.why);
+    if (!why.has(f.keep.id)) why.set(f.keep.id, f.why);
   }
-  const groupNo = new Map();
-  for (const f of fuzzy) {
-    const root = gfind(f.keep.id);
-    if (!groupNo.has(root)) groupNo.set(root, groupNo.size + 1);
-  }
-  fuzzy.sort((a, b) => groupNo.get(gfind(a.keep.id)) - groupNo.get(gfind(b.keep.id)));
 
-  const head = ['MERGE', 'group', 'why', 'keep_person_no', 'keep_name', 'keep_gifts', 'keep_total',
-    'drop_person_no', 'drop_name', 'drop_gifts', 'drop_total',
-    'mobile', 'keep_email', 'drop_email', 'keep_id', 'drop_id'];
-  const body = fuzzy.map((f) => [
-    '', groupNo.get(gfind(f.keep.id)), f.why,
-    f.keep.person_no, f.keep.full_name, f.keep.gifts, f.keep.total,
-    f.drop.person_no, f.drop.full_name, f.drop.gifts, f.drop.total,
-    f.keep.mobile_e164, f.keep.email, f.drop.email, f.keep.id, f.drop.id,
-  ].map(csvCell).join(','));
-  // BOM so Excel opens Tamil and Devanagari names correctly instead of mojibake.
-  await writeFile(CSV, `﻿${[head.join(','), ...body].join('\n')}\n`, 'utf8');
+  const byId = new Map();
+  for (const f of fuzzy) { byId.set(f.keep.id, f.keep); byId.set(f.drop.id, f.drop); }
+
+  const clusters = new Map();
+  for (const p of byId.values()) {
+    const root = gfind(p.id);
+    if (!clusters.has(root)) clusters.set(root, []);
+    clusters.get(root).push(p);
+  }
+
+  const head = ['group', 'KEEP', 'EXCLUDE', 'final_name', 'final_email',
+    'person_no', 'name', 'gifts', 'total', 'email', 'pan', 'mobile',
+    'address_line', 'why', 'person_id'];
+  const body = [];
+  let g = 0;
+  for (const members of [...clusters.values()].sort((a, b) => b.length - a.length)) {
+    g += 1;
+    // Most gifts first, then oldest: the record with the history is usually
+    // the real one, so the likely answer is at the top of each group.
+    members.sort((a, b) => Number(b.gifts) - Number(a.gifts)
+      || Number(a.person_no) - Number(b.person_no));
+    for (const m of members) {
+      body.push([g, '', '', m.full_name, m.email, m.person_no, m.full_name,
+        m.gifts, m.total, m.email, m.pan, m.mobile_e164,
+        m.address_line, why.get(m.id) || '', m.id].map(csvCell).join(','));
+    }
+    body.push('');   // blank line between devotees, so groups read as blocks
+  }
+  await writeFile(CSV, `\uFEFF${[head.join(','), ...body].join('\n')}\n`, 'utf8');
+
   console.log(`\nWrote ${CSV}`);
-  console.log('Put y in the MERGE column for each pair that is one devotee, then:');
-  console.log(`  npm run dedupe-people -- --apply ${CSV} --commit`);
+  console.log(`  ${clusters.size} devotee(s), ${byId.size} record(s) to review`);
+  console.log('  In each group put y in KEEP against the record to keep.');
+  console.log('  Correct final_name / final_email on that row if they are wrong.');
+  console.log('  Put y in EXCLUDE for a record that is a different person.');
+  console.log('  A group with no KEEP is left alone.');
+  console.log(`\n  npm run dedupe-people -- --apply ${CSV} --commit`);
 }
 
 if (!COMMIT) {
