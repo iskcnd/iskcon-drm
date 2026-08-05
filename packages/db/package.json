@@ -7,10 +7,12 @@
   "scripts": {
     "migrate": "node scripts/migrate.mjs",
     "create-admin": "node scripts/create-admin.mjs",
-    "load-pincodes": "node scripts/load-pincodes.mjs"
+    "load-pincodes": "node scripts/load-pincodes.mjs",
+    "import-donor-master": "node scripts/import-donor-master.mjs"
   },
   "dependencies": {
     "bcryptjs": "2.4.3",
+    "exceljs": "^4.4.0",
     "pg": "8.13.1",
     "pg-copy-streams": "^6.0.6"
   }
