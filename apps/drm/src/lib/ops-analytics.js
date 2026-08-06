@@ -47,17 +47,23 @@ export const ANALYTICS_OPS = {
         q(`SELECT COALESCE(NULLIF(btrim(area),''),'Not recorded') AS area, count(*) AS n
              FROM person WHERE is_active GROUP BY 1 ORDER BY n DESC LIMIT 12`),
 
-        q(`SELECT CASE
-                    WHEN dob IS NULL THEN 'Unknown'
-                    WHEN date_part('year', age(dob)) < 18 THEN 'Under 18'
-                    WHEN date_part('year', age(dob)) < 30 THEN '18-29'
-                    WHEN date_part('year', age(dob)) < 45 THEN '30-44'
-                    WHEN date_part('year', age(dob)) < 60 THEN '45-59'
-                    ELSE '60+' END AS band,
-                  count(*) AS n
-             FROM person WHERE is_active GROUP BY 1
-            ORDER BY CASE band WHEN 'Under 18' THEN 1 WHEN '18-29' THEN 2 WHEN '30-44' THEN 3
-                               WHEN '45-59' THEN 4 WHEN '60+' THEN 5 ELSE 6 END`),
+        // Grouped in a subquery so `band` is a real column by the time ORDER BY
+        // sees it. Postgres accepts a bare output name in ORDER BY but not one
+        // inside an expression, so `ORDER BY CASE band WHEN ...` fails with
+        // 'column "band" does not exist' — which is what the Insights page had
+        // been doing since it was written.
+        q(`SELECT band, n FROM (
+             SELECT CASE
+                      WHEN dob IS NULL THEN 'Unknown'
+                      WHEN date_part('year', age(dob)) < 18 THEN 'Under 18'
+                      WHEN date_part('year', age(dob)) < 30 THEN '18-29'
+                      WHEN date_part('year', age(dob)) < 45 THEN '30-44'
+                      WHEN date_part('year', age(dob)) < 60 THEN '45-59'
+                      ELSE '60+' END AS band,
+                    count(*) AS n
+               FROM person WHERE is_active GROUP BY 1) b
+            ORDER BY CASE b.band WHEN 'Under 18' THEN 1 WHEN '18-29' THEN 2 WHEN '30-44' THEN 3
+                                 WHEN '45-59' THEN 4 WHEN '60+' THEN 5 ELSE 6 END`),
 
         q(`SELECT COALESCE(NULLIF(btrim(preferred_language),''),'Not recorded') AS lang, count(*) AS n
              FROM person WHERE is_active GROUP BY 1 ORDER BY n DESC LIMIT 8`),
