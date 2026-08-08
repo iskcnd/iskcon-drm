@@ -31,8 +31,17 @@ async function download(action, body, fallbackName) {
   const name = (cd.match(/filename="([^"]+)"/) || [])[1] || fallbackName;
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
-  a.href = url; a.download = name; a.click();
-  URL.revokeObjectURL(url);
+  a.href = url;
+  a.download = name;
+  // Firefox ignores .click() on an anchor that is not in the document, so the
+  // download silently did nothing there. Append, click, then clean up — and
+  // revoke on a timer, because revoking immediately can cancel the download
+  // before the browser has read the blob.
+  a.style.display = 'none';
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(url), 30000);
 }
 
 const inr = (n) => '₹' + Number(n || 0).toLocaleString('en-IN');
@@ -87,7 +96,8 @@ export default function DispatchClient({ user }) {
       <div className="tabs">
         {[['batches', 'Batches'], ['new', 'New batch'],
           ['attention', `Needs attention${d?.attention?.length ? ` (${d.attention.length})` : ''}`],
-          ['gifts', 'Gifts'], ['import', 'Courier status']].map(([k, label]) => (
+          ['gifts', 'Gifts'], ['templates', 'Letters & labels'],
+          ['import', 'Courier status']].map(([k, label]) => (
             <button key={k} className={'tab' + (tab === k ? ' on' : '')} onClick={() => setTab(k)}>
               {label}
             </button>
@@ -104,6 +114,7 @@ export default function DispatchClient({ user }) {
       )}
       {d && tab === 'attention' && <Attention rows={d.attention} canRun={canRun} say={say} oops={oops} reload={load} />}
       {d && tab === 'gifts' && <Gifts gifts={d.gifts} canRun={canRun} say={say} oops={oops} reload={load} />}
+      {d && tab === 'templates' && <Templates canRun={canRun} say={say} oops={oops} reload={load} />}
       {d && tab === 'import' && <CourierImport canRun={canRun} say={say} oops={oops} reload={load} />}
     </div>
   );
@@ -234,9 +245,14 @@ function Batches({ d, canRun, say, oops, reload }) {
   const [open, setOpen] = useState(null);
   const [parcels, setParcels] = useState([]);
   const [busy, setBusy] = useState('');
+  const [showGifts, setShowGifts] = useState(false);
 
   async function openBatch(b) {
     setOpen(b);
+    setShowGifts(false);
+    // Clear first: leaving the previous batch's parcels on screen while the
+    // next load runs makes it look as though the wrong batch opened.
+    setParcels([]);
     try { setParcels(await api('dis.parcels', { batchId: b.id })); } catch (e) { oops(e); }
   }
   const act = async (label, fn) => {
@@ -287,17 +303,36 @@ function Batches({ d, canRun, say, oops, reload }) {
               download('courier-export', { batchId: open.id }, 'courier.xlsx'))}>
               Courier Excel
             </button>
+            <button disabled={!canRun || busy} onClick={() => setShowGifts((v) => !v)}>
+              {showGifts ? 'Hide gifts' : 'Choose gifts'}
+            </button>
             <button className="p" disabled={!canRun || busy} onClick={() => act('dispatch', async () => {
               const r = await api('dis.markDispatched', { batchId: open.id });
               say(`${r.parcels} parcels marked as handed over.`); reload(); openBatch(open);
             })}>
               Mark handed to courier
             </button>
+            {open.status !== 'dispatched' && open.status !== 'closed' && (
+              <button disabled={!canRun || busy} onClick={() => act('cancel', async () => {
+                // eslint-disable-next-line no-alert
+                if (!window.confirm(`Cancel "${open.name}" and its ${parcels.length} parcels? The donations become available to a new batch.`)) return;
+                const r = await api('dis.cancelBatch', { batchId: open.id });
+                say(`Cancelled, ${r.parcels} parcels released.`);
+                setOpen(null); reload();
+              })}>
+                Cancel batch
+              </button>
+            )}
           </div>
           <p className="hint">
             Print the test sheet on one label sheet first and hold it against the backing
             paper. Alignment is a template setting, not a code change.
           </p>
+
+          {showGifts && (
+            <BatchGifts batchId={open.id} gifts={d.gifts} canRun={canRun}
+              say={say} oops={oops} onDone={() => openBatch(open)} />
+          )}
 
           <table className="mini">
             <thead><tr><th>#</th><th>Tracking</th><th>Name</th><th>PIN</th>
@@ -456,6 +491,215 @@ function CourierImport({ canRun, say, oops, reload }) {
           )}
         </>
       )}
+    </div>
+  );
+}
+
+/* ------------------------------------------------------- letters & labels */
+/**
+ * This screen did not exist in the first cut. The batch form asked for a
+ * letter template and there was nowhere to create one or attach a document,
+ * so "Generate letters" could never succeed. That was the gap Divyarupa hit.
+ */
+function Templates({ canRun, say, oops }) {
+  const [rows, setRows] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const [info, setInfo] = useState(null);
+  const [nw, setNw] = useState({ kind: 'letter', name: '' });
+
+  const load = useCallback(() => {
+    api('dis.templates').then(setRows).catch(oops);
+  }, [oops]);
+  useEffect(load, [load]);
+
+  async function upload(templateId, e) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setBusy(true); setInfo(null);
+    try {
+      const fd = new FormData();
+      fd.append('file', file);
+      fd.append('templateId', templateId);
+      const r = await fetch('/api/dispatch/template-upload', { method: 'POST', body: fd });
+      const j = await r.json();
+      if (!r.ok) throw new Error(j.error || 'Upload failed');
+      setInfo({ id: templateId, ...j.data });
+      say(`${file.name} uploaded`);
+      load();
+    } catch (er) { oops(er); } finally { setBusy(false); e.target.value = ''; }
+  }
+
+  if (!rows) return <p className="dim">Loading…</p>;
+  const letters = rows.filter((t) => t.kind === 'letter');
+  const labels = rows.filter((t) => t.kind === 'label');
+
+  return (
+    <>
+      <div className="card">
+        <h3>Letter templates</h3>
+        <p className="hint">
+          A Word .docx with <code>{'{{donor_name}}'}</code> style fields. Your letterhead,
+          fonts and spacing are kept exactly — only the fields are replaced. Available
+          fields: {['donor_name', 'amount', 'receipt_nos', 'tracking_id', 'parcel_no',
+            'dispatch_date', 'gifts', 'address', 'band', 'temple_name', 'temple_address']
+            .map((f) => <code key={f} style={{ marginRight: 4 }}>{`{{${f}}}`}</code>)}
+        </p>
+        <table className="mini">
+          <thead><tr><th>Name</th><th>Document</th><th>Default</th><th /></tr></thead>
+          <tbody>
+            {letters.map((t) => (
+              <tr key={t.id}>
+                <td><b>{t.name}</b></td>
+                <td className={t.has_file ? '' : 'dim'}>
+                  {t.has_file
+                    ? `${t.file_name} · ${Math.round(t.file_size / 1024)} kB`
+                    : 'none uploaded — letters cannot be generated'}
+                </td>
+                <td>{t.is_default ? 'yes' : ''}</td>
+                <td>
+                  <label className="btnlike">
+                    {t.has_file ? 'Replace' : 'Upload .docx'}
+                    <input type="file" accept=".docx" style={{ display: 'none' }}
+                      disabled={!canRun || busy} onChange={(e) => upload(t.id, e)} />
+                  </label>
+                </td>
+              </tr>
+            ))}
+            {!letters.length && <tr><td colSpan={4} className="dim">No letter templates yet.</td></tr>}
+          </tbody>
+        </table>
+
+        {info && (
+          <div className={info.unknown?.length ? 'warnbox' : 'okbox'} style={{ marginTop: 12 }}>
+            <b>{info.fileName}</b> — fields found: {info.fields.length ? info.fields.join(', ') : 'none'}
+            {info.unknown?.length > 0 && (
+              <><br />These are not fields we can fill and will print as-is:{' '}
+                <b>{info.unknown.join(', ')}</b></>
+            )}
+          </div>
+        )}
+      </div>
+
+      <div className="card">
+        <h3>Label sheets</h3>
+        <table className="mini">
+          <thead><tr><th>Name</th><th>Geometry</th><th>Default</th></tr></thead>
+          <tbody>
+            {labels.map((t) => (
+              <tr key={t.id}>
+                <td><b>{t.name}</b></td>
+                <td className="dim">
+                  {t.spec?.width_mm}×{t.spec?.height_mm}mm · {t.spec?.across} across,
+                  {' '}{t.spec?.down} down · pitch {t.spec?.pitch_x}/{t.spec?.pitch_y}mm ·
+                  {' '}margins {t.spec?.margin_left}/{t.spec?.margin_top}mm
+                </td>
+                <td>{t.is_default ? 'yes' : ''}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        <p className="hint">
+          If a printed sheet does not line up with the die-cut, adjust the margins here
+          rather than in code. Print the test sheet with outlines from any batch first.
+        </p>
+      </div>
+
+      <div className="card">
+        <h3>Add a template</h3>
+        <div className="g3">
+          <div className="fg"><label>Kind</label>
+            <select value={nw.kind} onChange={(e) => setNw({ ...nw, kind: e.target.value })}>
+              <option value="letter">Letter</option>
+              <option value="label">Label sheet</option>
+            </select>
+          </div>
+          <div className="fg"><label>Name</label>
+            <input value={nw.name} onChange={(e) => setNw({ ...nw, name: e.target.value })}
+              placeholder="Ratha Yatra thank-you" /></div>
+        </div>
+        <div className="actions">
+          <button className="p" disabled={!canRun || !nw.name.trim()} onClick={async () => {
+            try {
+              await api('dis.saveTemplate', { kind: nw.kind, name: nw.name });
+              setNw({ kind: 'letter', name: '' }); say('Template added'); load();
+            } catch (e) { oops(e); }
+          }}>Add</button>
+        </div>
+      </div>
+    </>
+  );
+}
+
+/* ------------------------------------------------------ gifts for a batch */
+/**
+ * Gifts are chosen per band per batch, and the column that matters is
+ * "had before" — how many donors in this band already received that item.
+ * That is the whole reason the gift history exists: not to enforce a rule,
+ * but to put the fact in front of whoever is deciding.
+ */
+function BatchGifts({ batchId, gifts, canRun, say, oops, onDone }) {
+  const [plan, setPlan] = useState(null);
+  const [pick, setPick] = useState({});
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    api('dis.giftPlan', { batchId }).then(setPlan).catch(oops);
+  }, [batchId, oops]);
+
+  if (!plan) return <p className="dim">Loading gift history…</p>;
+  const bands = [...new Set(plan.map((r) => r.band))].sort();
+  if (!bands.length) return <p className="dim">No parcels in this batch yet.</p>;
+
+  const toggle = (band, giftId) => setPick((s) => {
+    const cur = new Set(s[band] || []);
+    if (cur.has(giftId)) cur.delete(giftId); else cur.add(giftId);
+    return { ...s, [band]: [...cur] };
+  });
+
+  return (
+    <div className="card">
+      <h3>What goes in each parcel</h3>
+      <p className="hint">
+        Tick the gifts for a band, then apply. <b>Had before</b> is how many donors in
+        that band have already received it — high numbers are the ones to avoid repeating.
+      </p>
+      {bands.map((band) => {
+        const rows = plan.filter((r) => r.band === band);
+        const donors = rows[0]?.donors_in_band ?? 0;
+        return (
+          <div key={band} style={{ marginBottom: 18 }}>
+            <h3 style={{ marginBottom: 6 }}>Band {band} · {donors} donors</h3>
+            <div className="tagpick">
+              {rows.filter((r) => gifts.find((g) => g.id === r.gift_id && g.is_active)).map((r) => (
+                <label key={r.gift_id}>
+                  <input type="checkbox" disabled={!canRun}
+                    checked={(pick[band] || []).includes(r.gift_id)}
+                    onChange={() => toggle(band, r.gift_id)} />
+                  {r.name}
+                  {r.had_before > 0 && (
+                    <span className="dim"> · {r.had_before} had before</span>
+                  )}
+                </label>
+              ))}
+            </div>
+            <div className="actions" style={{ justifyContent: 'flex-start', marginTop: 8 }}>
+              <button disabled={!canRun || busy} onClick={async () => {
+                setBusy(true);
+                try {
+                  const r = await api('dis.setBandGifts', {
+                    batchId, band,
+                    gifts: (pick[band] || []).map((giftId) => ({ giftId, qty: 1 })),
+                  });
+                  say(`Band ${band}: ${r.parcels} parcels updated`);
+                  if (onDone) onDone();
+                } catch (e) { oops(e); } finally { setBusy(false); }
+              }}>
+                Apply to band {band}
+              </button>
+            </div>
+          </div>
+        );
+      })}
     </div>
   );
 }

@@ -3,7 +3,7 @@ import { currentUser, can, CAPABILITY } from '@/lib/session';
 import { q, tx } from '@/lib/db';
 import { renderLabels } from '@iskcon/dispatch/label';
 import { courierWorkbook, pendingWorkbook } from '@iskcon/dispatch/exports';
-import { mergeBatch } from '@iskcon/dispatch/mailmerge';
+import { mergeBatch, fieldsUsed, LETTER_FIELDS } from '@iskcon/dispatch/mailmerge';
 import { readCourierFile, applyCourierRows } from '@iskcon/dispatch/courier';
 
 export const dynamic = 'force-dynamic';
@@ -120,18 +120,20 @@ export async function POST(request, { params }) {
     if (action === 'letters') {
       const { batchId } = await request.json();
       const b = (await q(
-        `SELECT b.*, t.spec, t.name AS template_name FROM dispatch.batch b
+        `SELECT b.*, t.name AS template_name, t.file_data, t.file_name
+           FROM dispatch.batch b
            JOIN dispatch.template t ON t.id = b.letter_template_id
           WHERE b.id = $1`, [batchId])).rows[0];
       if (!b) return NextResponse.json({ error: 'Batch or letter template not found' }, { status: 404 });
 
-      const key = b.spec?.r2_key;
-      if (!key) {
+      if (!b.file_data) {
         return NextResponse.json({
-          error: 'That letter template has no document uploaded yet. Upload the .docx against the template first.',
+          error: `No Word document has been uploaded against "${b.template_name}". `
+               + 'Go to the Templates tab, open that template and upload a .docx '
+               + 'containing {{donor_name}} style fields.',
         }, { status: 400 });
       }
-      const tpl = await fetchTemplate(key);
+      const tpl = Buffer.from(b.file_data);
       const rows = await parcelRows(batchId);
 
       const letters = rows.map((p) => ({
@@ -195,22 +197,60 @@ export async function POST(request, { params }) {
       });
     }
 
+    // ---------------------------------------------------- template upload
+    if (action === 'template-upload') {
+      const form = await request.formData();
+      const upload = form.get('file');
+      const templateId = form.get('templateId');
+      if (!upload || typeof upload === 'string') {
+        return NextResponse.json({ error: 'Choose a .docx file' }, { status: 400 });
+      }
+      if (!templateId) return NextResponse.json({ error: 'Which template?' }, { status: 400 });
+
+      const buf = Buffer.from(await upload.arrayBuffer());
+      // A .docx is a zip; every zip starts PK. Catching this here means the
+      // operator is told they picked a .doc or a PDF now, rather than after
+      // pressing Generate letters on a batch of 250.
+      if (buf.length < 4 || buf[0] !== 0x50 || buf[1] !== 0x4b) {
+        return NextResponse.json({
+          error: 'That is not a .docx. Word 97 .doc files and PDFs cannot be merged — '
+               + 'open it in Word and Save As "Word Document (.docx)".',
+        }, { status: 400 });
+      }
+
+      let fields = [];
+      try {
+        const JSZip = (await import('jszip')).default;
+        const zip = await JSZip.loadAsync(buf);
+        const docXml = zip.file('word/document.xml');
+        if (!docXml) throw new Error('no word/document.xml inside');
+        fields = fieldsUsed(await docXml.async('string'));
+      } catch (e) {
+        return NextResponse.json({ error: `Could not read that Word file: ${e.message}` }, { status: 400 });
+      }
+
+      await q(
+        `UPDATE dispatch.template
+            SET file_data=$2, file_name=$3, file_size=$4, uploaded_at=now()
+          WHERE id=$1`,
+        [templateId, buf, upload.name || 'letter.docx', buf.length]);
+
+      // Tell the operator which placeholders the document actually uses, and
+      // which of those we cannot fill — before it matters.
+      const known = new Set(LETTER_FIELDS.map(([k]) => k));
+      return NextResponse.json({
+        data: {
+          fileName: upload.name,
+          size: buf.length,
+          fields,
+          unknown: fields.filter((f) => !known.has(f)),
+        },
+      });
+    }
+
     return NextResponse.json({ error: `Unknown action: ${action}` }, { status: 404 });
   } catch (err) {
     console.error(`[dispatch:${action}]`, err);
     return NextResponse.json({ error: err.message || 'Something went wrong' }, { status: 400 });
   }
-}
-
-/**
- * Letter templates live in Cloudflare R2. Fetched over its S3-compatible
- * HTTP endpoint rather than with an SDK, because one signed GET does not
- * justify a dependency.
- */
-async function fetchTemplate(key) {
-  const base = (process.env.R2_PUBLIC_BASE || '').replace(/\/$/, '');
-  if (!base) throw new Error('R2_PUBLIC_BASE is not set, so letter templates cannot be read');
-  const res = await fetch(`${base}/${key}`);
-  if (!res.ok) throw new Error(`Could not read the letter template from storage (HTTP ${res.status})`);
-  return Buffer.from(await res.arrayBuffer());
 }

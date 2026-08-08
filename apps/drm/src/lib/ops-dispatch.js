@@ -288,6 +288,97 @@ export const DISPATCH_OPS = {
     },
   },
 
+  /**
+   * Templates: letters and label sheets.
+   * file_data is deliberately never selected — a .docx in a JSON response
+   * would be megabytes of base64 for no reason. Only whether one exists.
+   */
+  'dis.templates': {
+    cap: CAPABILITY.read,
+    async run() {
+      const r = await q(
+        `SELECT id, kind, name, is_default, is_active, spec, notes,
+                file_name, file_size, uploaded_at,
+                (file_data IS NOT NULL) AS has_file
+           FROM dispatch.template ORDER BY kind, name`);
+      return r.rows;
+    },
+  },
+
+  'dis.saveTemplate': {
+    cap: CAPABILITY.bulk,
+    async run({ id, kind, name, spec, notes, isDefault, isActive }, user) {
+      if (!clean(name)) throw new Error('The template needs a name');
+      if (!['letter', 'label'].includes(kind)) throw new Error('Kind must be letter or label');
+
+      let parsedSpec = {};
+      if (spec) {
+        try { parsedSpec = typeof spec === 'string' ? JSON.parse(spec) : spec; }
+        catch (e) { throw new Error(`The label geometry is not valid JSON: ${e.message}`); }
+      }
+      // A label sheet whose numbers do not fit A4 wastes a sheet of stock per
+      // print run, so it is refused at save rather than discovered at print.
+      if (kind === 'label') {
+        const s = { width_mm: 100, height_mm: 72, margin_top: 4.5, margin_left: 3.5,
+          pitch_x: 103, pitch_y: 72, across: 2, down: 4, ...parsedSpec };
+        const right = s.margin_left + (s.across - 1) * s.pitch_x + s.width_mm;
+        const bottom = s.margin_top + (s.down - 1) * s.pitch_y + s.height_mm;
+        if (right > 210.5) throw new Error(`Those labels run ${(right - 210).toFixed(1)}mm off the right edge of A4`);
+        if (bottom > 297.5) throw new Error(`Those labels run ${(bottom - 297).toFixed(1)}mm off the bottom of A4`);
+        if (s.pitch_x < s.width_mm) throw new Error('Horizontal pitch is smaller than the label — the columns would overlap');
+        if (s.pitch_y < s.height_mm) throw new Error('Vertical pitch is smaller than the label — the rows would overlap');
+        parsedSpec = s;
+      }
+
+      return tx(user.id, async (c) => {
+        let row;
+        if (id) {
+          const r = await c.query(
+            `UPDATE dispatch.template SET name=$2, spec=$3, notes=$4, is_active=$5
+              WHERE id=$1 RETURNING id, kind`,
+            [id, clean(name), JSON.stringify(parsedSpec), clean(notes), isActive !== false]);
+          if (!r.rowCount) throw new Error('Template not found');
+          row = r.rows[0];
+        } else {
+          const r = await c.query(
+            `INSERT INTO dispatch.template (kind, name, spec, notes, is_active)
+             VALUES ($1,$2,$3,$4,$5)
+             ON CONFLICT (kind, name) DO UPDATE SET spec=EXCLUDED.spec, notes=EXCLUDED.notes
+             RETURNING id, kind`,
+            [kind, clean(name), JSON.stringify(parsedSpec), clean(notes), isActive !== false]);
+          row = r.rows[0];
+        }
+        // Exactly one default per kind, enforced here rather than trusted to
+        // whoever ticks the box last.
+        if (isDefault) {
+          await c.query('UPDATE dispatch.template SET is_default=false WHERE kind=$1', [row.kind]);
+          await c.query('UPDATE dispatch.template SET is_default=true WHERE id=$1', [row.id]);
+        }
+        return row;
+      });
+    },
+  },
+
+  /** Cancel a batch made by mistake. Parcels go with it, donations are freed. */
+  'dis.cancelBatch': {
+    cap: CAPABILITY.bulk,
+    async run({ batchId }, user) {
+      return tx(user.id, async (c) => {
+        const b = (await c.query('SELECT status FROM dispatch.batch WHERE id=$1', [batchId])).rows[0];
+        if (!b) throw new Error('Batch not found');
+        if (b.status === 'dispatched' || b.status === 'closed') {
+          throw new Error('That batch has already gone to the courier. Cancelling it would hide parcels that are physically in transit.');
+        }
+        // Cancelled parcels are excluded from plan_batch's "already sent"
+        // guard, so the donations become available to a corrected batch.
+        const r = await c.query(
+          "UPDATE dispatch.parcel SET status='cancelled' WHERE batch_id=$1 RETURNING id", [batchId]);
+        await c.query("UPDATE dispatch.batch SET status='cancelled' WHERE id=$1", [batchId]);
+        return { parcels: r.rowCount };
+      });
+    },
+  },
+
   'dis.jobs': {
     cap: CAPABILITY.read,
     async run({ batchId }) {
